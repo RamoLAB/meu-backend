@@ -9,19 +9,44 @@ const c = g, x = c.getContext("2d");
 let p = { x: 50, y: 50, s: 5 };
 let k = {};
 
-// ID único do jogador
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
-
 const SERVER_URL = "https://meu-backend-0rzt.onrender.com";
 
-(window.onresize = () => {
+let playersCache = {};
+
+// resize
+window.onresize = () => {
     c.width = innerWidth;
     c.height = innerHeight;
-})();
+};
+window.onresize();
 
+// input
 onkeydown = e => k[e.key] = 1;
 onkeyup = e => k[e.key] = 0;
 
+// atualiza players menos agressivo (5x por segundo)
+setInterval(() => {
+    fetch(SERVER_URL + "/players")
+        .then(r => r.json())
+        .then(data => playersCache = data)
+        .catch(() => {});
+}, 200);
+
+// envia posição menos agressivo (10x por segundo)
+setInterval(() => {
+    fetch(SERVER_URL + "/posicao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            id: PLAYER_ID,
+            x: p.x,
+            y: p.y
+        })
+    }).catch(() => {});
+}, 100);
+
+// loop de render (60fps)
 function loop() {
 
     if (k.ArrowUp || k.w) p.y -= p.s;
@@ -35,36 +60,19 @@ function loop() {
     x.fillStyle = "#fff";
     x.fillRect(0, 0, c.width, c.height);
 
-    // desenha jogadores
-    fetch(SERVER_URL + "/players")
-    .then(r => r.json())
-    .then(players => {
+    for (let id in playersCache) {
+        let pl = playersCache[id];
+        if (!pl) continue;
 
-        for (let id in players) {
-            let pl = players[id];
-
-            x.fillStyle = (id === PLAYER_ID) ? "#0f0" : "#f00";
-            x.fillRect(pl.x, pl.y, 30, 30);
-        }
-
-    });
-
-    // envia posição
-    fetch(SERVER_URL + "/posicao", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            id: PLAYER_ID,
-            x: p.x,
-            y: p.y
-        })
-    });
+        x.fillStyle = (id === PLAYER_ID) ? "#0f0" : "#f00";
+        x.fillRect(pl.x, pl.y, 30, 30);
+    }
 
     requestAnimationFrame(loop);
 }
 
 loop();
-
 </script>
+
 </body>
 </html>
