@@ -25,15 +25,15 @@ window.onresize();
 onkeydown = e => k[e.key] = 1;
 onkeyup = e => k[e.key] = 0;
 
-// atualiza players menos agressivo (5x por segundo)
+// REDE (2x por segundo)
 setInterval(() => {
     fetch(SERVER_URL + "/players")
         .then(r => r.json())
         .then(data => playersCache = data)
         .catch(() => {});
-}, 200);
+}, 500);
 
-// envia posição menos agressivo (10x por segundo)
+// ENVIO (5x por segundo)
 setInterval(() => {
     fetch(SERVER_URL + "/posicao", {
         method: "POST",
@@ -44,9 +44,9 @@ setInterval(() => {
             y: p.y
         })
     }).catch(() => {});
-}, 100);
+}, 200);
 
-// loop de render (60fps)
+// LOOP DE RENDER (60fps)
 function loop() {
 
     if (k.ArrowUp || k.w) p.y -= p.s;
@@ -61,7 +61,7 @@ function loop() {
     x.fillRect(0, 0, c.width, c.height);
 
     for (let id in playersCache) {
-        let pl = playersCache[id];
+        const pl = playersCache[id];
         if (!pl) continue;
 
         x.fillStyle = (id === PLAYER_ID) ? "#0f0" : "#f00";
