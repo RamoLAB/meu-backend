@@ -12,21 +12,16 @@ app.use((req, res, next) => {
     next();
 });
 
+// início do “mundo”
+const WORLD_START = Date.now();
+
 const players = {};
 
-// tempo de vida (ms)
-const TIMEOUT = 5000;
-
-// cleanup automático
-setInterval(() => {
-    const now = Date.now();
-
-    for (let id in players) {
-        if (now - players[id].last > TIMEOUT) {
-            delete players[id];
-        }
-    }
-}, 2000);
+app.get('/world', (req, res) => {
+    res.json({
+        time: Date.now() - WORLD_START
+    });
+});
 
 app.get('/players', (req, res) => {
     res.json(players);
@@ -44,6 +39,16 @@ app.post('/posicao', (req, res) => {
 
     res.send("ok");
 });
+
+// limpeza
+setInterval(() => {
+    const now = Date.now();
+    for (let id in players) {
+        if (now - players[id].last > 5000) {
+            delete players[id];
+        }
+    }
+}, 2000);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
