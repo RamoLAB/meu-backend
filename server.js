@@ -3,11 +3,16 @@ const app = express();
 
 app.use(express.json());
 
-// libera acesso entre domínios (CORS)
+// CORS robusto
 app.use((req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+        return res.sendStatus(200);
+    }
+
     next();
 });
 
@@ -16,7 +21,7 @@ app.get('/', (req, res) => {
 });
 
 app.post('/posicao', (req, res) => {
-    console.log(req.body);
+    console.log("RECEBIDO:", req.body);
     res.send('ok');
 });
 
