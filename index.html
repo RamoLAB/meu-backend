@@ -14,6 +14,9 @@ const SERVER_URL = "https://meu-backend-0rzt.onrender.com";
 
 let playersCache = {};
 
+// timer
+const startTime = Date.now();
+
 // resize
 window.onresize = () => {
     c.width = innerWidth;
@@ -25,7 +28,7 @@ window.onresize();
 onkeydown = e => k[e.key] = 1;
 onkeyup = e => k[e.key] = 0;
 
-// REDE (2x por segundo)
+// rede (reduzido)
 setInterval(() => {
     fetch(SERVER_URL + "/players")
         .then(r => r.json())
@@ -33,7 +36,6 @@ setInterval(() => {
         .catch(() => {});
 }, 500);
 
-// ENVIO (5x por segundo)
 setInterval(() => {
     fetch(SERVER_URL + "/posicao", {
         method: "POST",
@@ -46,9 +48,10 @@ setInterval(() => {
     }).catch(() => {});
 }, 200);
 
-// LOOP DE RENDER (60fps)
+// loop principal
 function loop() {
 
+    // movimento local (sempre fluido)
     if (k.ArrowUp || k.w) p.y -= p.s;
     if (k.ArrowDown || k.s) p.y += p.s;
     if (k.ArrowLeft || k.a) p.x -= p.s;
@@ -57,21 +60,45 @@ function loop() {
     p.x = Math.max(0, Math.min(c.width - 30, p.x));
     p.y = Math.max(0, Math.min(c.height - 30, p.y));
 
+    // fundo
     x.fillStyle = "#fff";
     x.fillRect(0, 0, c.width, c.height);
 
+    // jogadores
     for (let id in playersCache) {
         const pl = playersCache[id];
         if (!pl) continue;
 
-        x.fillStyle = (id === PLAYER_ID) ? "#0f0" : "#f00";
+        // cor estável por ID
+        let color = "#" + intToColor(id);
+
+        x.fillStyle = color;
         x.fillRect(pl.x, pl.y, 30, 30);
     }
+
+    // cronômetro (1 minuto loop)
+    const elapsed = Math.floor((Date.now() - startTime) / 1000);
+    const timeLeft = 60 - (elapsed % 60);
+
+    x.fillStyle = "#000";
+    x.font = "20px Arial";
+    x.textAlign = "center";
+    x.fillText("Tempo: " + timeLeft + "s", c.width / 2, 30);
 
     requestAnimationFrame(loop);
 }
 
 loop();
+
+// gera cor estável por ID
+function intToColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    let color = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+    return "00000".substring(0, 6 - color.length) + color;
+}
 </script>
 
 </body>
