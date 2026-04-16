@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+<body style="margin:0; overflow:hidden; background:#fff">
+<canvas id="g"></canvas>
+
+<script>
+const c = g, x = c.getContext("2d");
+
+let p = { x: 50, y: 50, s: 5 };
+let k = {};
+
+// ID único do jogador
+const PLAYER_ID = Math.random().toString(36).substring(2, 10);
+
+const SERVER_URL = "https://meu-backend-0rzt.onrender.com";
+
+(window.onresize = () => {
+    c.width = innerWidth;
+    c.height = innerHeight;
+})();
+
+onkeydown = e => k[e.key] = 1;
+onkeyup = e => k[e.key] = 0;
+
+function loop() {
+
+    if (k.ArrowUp || k.w) p.y -= p.s;
+    if (k.ArrowDown || k.s) p.y += p.s;
+    if (k.ArrowLeft || k.a) p.x -= p.s;
+    if (k.ArrowRight || k.d) p.x += p.s;
+
+    p.x = Math.max(0, Math.min(c.width - 30, p.x));
+    p.y = Math.max(0, Math.min(c.height - 30, p.y));
+
+    x.fillStyle = "#fff";
+    x.fillRect(0, 0, c.width, c.height);
+
+    // desenha jogadores
+    fetch(SERVER_URL + "/players")
+    .then(r => r.json())
+    .then(players => {
+
+        for (let id in players) {
+            let pl = players[id];
+
+            x.fillStyle = (id === PLAYER_ID) ? "#0f0" : "#f00";
+            x.fillRect(pl.x, pl.y, 30, 30);
+        }
+
+    });
+
+    // envia posição
+    fetch(SERVER_URL + "/posicao", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            id: PLAYER_ID,
+            x: p.x,
+            y: p.y
+        })
+    });
+
+    requestAnimationFrame(loop);
+}
+
+loop();
+
+</script>
+</body>
+</html>
