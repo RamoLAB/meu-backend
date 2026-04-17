@@ -44,7 +44,7 @@ let accelPressed = false;
 let brakePressed = false;
 
 // =========================
-// CAR STATE (CORRETO)
+// CAR STATE
 // =========================
 let p = {
     x: 200,
@@ -79,14 +79,6 @@ accel.ontouchend = () => accelPressed = false;
 
 brake.ontouchstart = () => brakePressed = true;
 brake.ontouchend = () => brakePressed = false;
-
-// =========================
-// SPRITE
-// =========================
-function drawCar(ctx){
-    ctx.fillStyle = "#d40000";
-    ctx.fillRect(-15, -15, 30, 30);
-}
 
 // =========================
 // WEBSOCKET
@@ -138,24 +130,24 @@ window.onresize();
 // =========================
 function loop(){
 
-    // ROTAÇÃO (independente)
-    if (k.ArrowLeft || k.a) p.angle -= p.turnSpeed;
-    if (k.ArrowRight || k.d) p.angle += p.turnSpeed;
+    // ROTAÇÃO (corrigido)
+    if (k.ArrowLeft || k.a || k.ArrowUp) p.angle -= p.turnSpeed;
+    if (k.ArrowRight || k.d || k.ArrowDown) p.angle += p.turnSpeed;
 
-    // ACELERAÇÃO (somente pedal)
+    // ACELERAÇÃO
     if (accelPressed) {
         p.speed += p.accel;
     }
 
-    // FREIO = corta velocidade
+    // FREIO
     if (brakePressed) {
         p.speed *= 0.7;
     }
 
-    // limite
+    // limites
     p.speed = Math.max(0, Math.min(p.maxSpeed, p.speed));
 
-    // movimento real
+    // movimento
     p.x += Math.cos(p.angle) * p.speed;
     p.y += Math.sin(p.angle) * p.speed;
 
@@ -198,11 +190,12 @@ function loop(){
         }
     }
 
-    // VOCÊ (com rotação)
+    // você
     x.save();
     x.translate(p.x, p.y);
     x.rotate(p.angle);
-    drawCar(x);
+    x.fillStyle = "#d40000";
+    x.fillRect(-15, -15, 30, 30);
     x.restore();
 
     requestAnimationFrame(loop);
@@ -210,5 +203,6 @@ function loop(){
 
 loop();
 </script>
+
 </body>
 </html>
