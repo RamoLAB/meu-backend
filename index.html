@@ -4,140 +4,207 @@
 
 <canvas id="g"></canvas>
 
-<!-- HUD -->
-<div style="position:fixed; top:10px; left:10px; font-family:sans-serif;">
+<div style="position:fixed; top:10px; right:10px; font-family:sans-serif;">
     Volta: <span id="lap">1</span>/5
-</div>
-
-<!-- PEDAIS -->
-<div style="position:fixed; bottom:20px; right:20px; display:flex; gap:12px;">
-    <div id="brake" style="width:80px;height:80px;border:2px solid rgba(200,200,200,0.5);border-radius:12px;display:flex;align-items:center;justify-content:center;">BRAKE</div>
-    <div id="gas" style="width:80px;height:80px;border:2px solid rgba(200,200,200,0.5);border-radius:12px;display:flex;align-items:center;justify-content:center;">GAS</div>
 </div>
 
 <script>
 const c = g;
 const x = c.getContext("2d");
 
+// ==========================
+// CONFIG
+// ==========================
+const PLAYER_ID = Math.random().toString(36).slice(2,9);
+const PLAYER_COLOR = "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0");
+const WS_URL = "wss://meu-backend-0rzt.onrender.com";
+
+// ==========================
+// TRACK
+// ==========================
+const track = {};
+
+// ==========================
+// PLAYER LOCAL
+// ==========================
 let p = {
-    x: 400,
-    y: 300,
-    angle: 0,
+    x: 0,
+    y: 0,
+    angle: Math.PI,
     speed: 0,
     lap: 1,
-    lastCross: false
+    stage: 0,
+    lastCross: false,
+    boost: 0,
+    tyre: 100,
+    isBoosting: false
 };
 
+// OUTROS JOGADORES
+let players = {};
+
+// ==========================
+// INPUT
+// ==========================
 let k = {};
-let accelerating = false;
-let braking = false;
-
-// pista
-const track = {
-    cx: 600,
-    cy: 400,
-    rx: 300,
-    ry: 200,
-    width: 80
-};
-
-// linha de chegada (vertical)
-const finishLineX = track.cx;
-
-// resize
-onresize = () => {
-    c.width = innerWidth;
-    c.height = innerHeight;
-};
-onresize();
-
-// teclado
 onkeydown = e => k[e.key.toLowerCase()] = 1;
 onkeyup = e => k[e.key.toLowerCase()] = 0;
 
-// pedais
-gas.onmousedown = () => accelerating = true;
-gas.onmouseup = () => accelerating = false;
-gas.onmouseleave = () => accelerating = false;
+// ==========================
+// RESIZE
+// ==========================
+onresize = () => {
+    c.width = innerWidth;
+    c.height = innerHeight;
 
-brake.onmousedown = () => braking = true;
-brake.onmouseup = () => braking = false;
-brake.onmouseleave = () => braking = false;
+    track.w = c.width;
+    track.h = c.height;
 
-// loop
+    track.innerW = track.w * 0.6;
+    track.innerH = track.h * 0.5;
+    track.innerX = (track.w - track.innerW)/2;
+    track.innerY = (track.h - track.innerH)/2;
+
+    p.x = track.w / 2;
+    p.y = track.innerY / 2;
+};
+onresize();
+
+// ==========================
+// WEBSOCKET
+// ==========================
+const ws = new WebSocket(WS_URL);
+
+ws.onopen = () => {
+    ws.send(JSON.stringify({
+        type: "join",
+        id: PLAYER_ID,
+        color: PLAYER_COLOR
+    }));
+};
+
+ws.onmessage = (msg) => {
+    const data = JSON.parse(msg.data);
+
+    if(data.type === "state"){
+        players = data.players;
+    }
+};
+
+// envio
+setInterval(()=>{
+    if(ws.readyState !== 1) return;
+
+    ws.send(JSON.stringify({
+        type:"move",
+        id: PLAYER_ID,
+        x: p.x,
+        y: p.y,
+        angle: p.angle,
+        color: PLAYER_COLOR,
+        lap: p.lap
+    }));
+},50);
+
+// ==========================
+// LOOP
+// ==========================
 function loop(){
 
     // direção
-    if(k["arrowleft"]||k["a"]||k["arrowup"]||k["w"]) p.angle -= 0.05;
-    if(k["arrowright"]||k["d"]||k["arrowdown"]||k["s"]) p.angle += 0.05;
+    if(k["arrowleft"]||k["a"]) p.angle -= 0.05;
+    if(k["arrowright"]||k["d"]) p.angle += 0.05;
 
-    // aceleração
-    if(accelerating){
-        p.speed += 0.2;
-        if(p.speed > 6) p.speed = 6;
+    let accel = k["arrowup"]||k["w"];
+    let brake = k["arrowdown"]||k["s"];
+
+    if(accel){
+        p.speed += 0.3;
+        if(p.speed > 8) p.speed = 8;
     }
 
-    // freio
-    if(braking){
-        p.speed *= 0.7;
-        if(p.speed < 0.05) p.speed = 0;
+    if(brake){
+        p.speed *= 0.85;
     }
 
-    // inércia
-    if(!accelerating && !braking){
+    if(!accel && !brake){
         p.speed *= 0.99;
     }
 
     // movimento
-    p.x += Math.cos(p.angle) * p.speed;
-    p.y += Math.sin(p.angle) * p.speed;
+    let nx = p.x + Math.cos(p.angle)*p.speed;
+    let ny = p.y + Math.sin(p.angle)*p.speed;
 
-    // =====================
-    // DETECÇÃO DE VOLTA
-    // =====================
-    let crossing = (p.x > finishLineX && p.y > track.cy);
+    let hit =
+        nx < 10 || nx > track.w-10 ||
+        ny < 10 || ny > track.h-10 ||
+        (nx>track.innerX && nx<track.innerX+track.innerW &&
+         ny>track.innerY && ny<track.innerY+track.innerH);
 
-    if(crossing && !p.lastCross){
-        if(p.lap < 5){
-            p.lap++;
-            document.getElementById("lap").innerText = p.lap;
-        }
+    if(!hit){
+        p.x = nx;
+        p.y = ny;
+    } else {
+        p.speed *= -0.3;
     }
 
-    p.lastCross = crossing;
+    // LAP SYSTEM
+    if(p.stage==0 && p.x < track.innerX) p.stage=1;
+    if(p.stage==1 && p.y > track.innerY+track.innerH) p.stage=2;
+    if(p.stage==2 && p.x > track.innerX+track.innerW) p.stage=3;
 
-    // =====================
-    // RENDER
-    // =====================
-    x.fillStyle = "#fff";
+    let cross = (p.stage==3 && p.x < track.w/2 && p.y < track.innerY);
+    if(cross && !p.lastCross){
+        if(p.lap < 5){
+            p.lap++;
+            lap.innerText = p.lap;
+            p.stage = 0;
+        }
+    }
+    p.lastCross = cross;
+
+    // ======================
+    // DRAW
+    // ======================
+    x.fillStyle="#fff";
     x.fillRect(0,0,c.width,c.height);
 
-    // pista (asfalto)
-    x.fillStyle = "#555";
-    x.beginPath();
-    x.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI*2);
-    x.fill();
+    // pista
+    x.strokeStyle="#000";
+    x.lineWidth=5;
+    x.strokeRect(0,0,track.w,track.h);
 
-    // miolo (grama)
-    x.fillStyle = "#2e8b57";
-    x.beginPath();
-    x.ellipse(track.cx, track.cy, track.rx-track.width, track.ry-track.width, 0, 0, Math.PI*2);
-    x.fill();
+    x.lineWidth=2;
+    x.strokeRect(track.innerX,track.innerY,track.innerW,track.innerH);
 
     // linha chegada
-    x.strokeStyle = "#fff";
-    x.lineWidth = 4;
     x.beginPath();
-    x.moveTo(finishLineX, track.cy - track.ry);
-    x.lineTo(finishLineX, track.cy + track.ry);
+    x.moveTo(track.w/2,0);
+    x.lineTo(track.w/2,track.innerY);
     x.stroke();
 
-    // carro
+    // OUTROS
+    for(let id in players){
+        if(id === PLAYER_ID) continue;
+
+        let pl = players[id];
+
+        x.save();
+        x.translate(pl.x, pl.y);
+        x.rotate(pl.angle || 0);
+
+        x.fillStyle = pl.color || "#999";
+        x.fillRect(-15,-15,30,30);
+
+        x.restore();
+    }
+
+    // VOCÊ
     x.save();
-    x.translate(p.x, p.y);
+    x.translate(p.x,p.y);
     x.rotate(p.angle);
-    x.fillStyle = "#000";
-    x.fillRect(-15, -15, 30, 30);
+    x.fillStyle = PLAYER_COLOR;
+    x.fillRect(-15,-15,30,30);
     x.restore();
 
     requestAnimationFrame(loop);
