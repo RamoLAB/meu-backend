@@ -1,23 +1,13 @@
 <!DOCTYPE html>
 <html>
-<body style="margin:0; overflow:hidden; background:#fff">
+<body style="margin:0; overflow:hidden; background:#ccc">
 <canvas id="g"></canvas>
 
 <script>
 const c = g;
 const x = c.getContext("2d");
 
-// =====================
-// PLAYER (AGORA COM FÍSICA)
-// =====================
-
-let p = {
-    x: 50,
-    y: 50,
-    angle: 0,
-    speed: 0
-};
-
+let p = { x: 50, y: 50, s: 5, angle: 0 };
 let k = {};
 
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
@@ -27,48 +17,77 @@ let stateBuffer = [];
 const RENDER_DELAY = 50;
 
 // =====================
-// CARRO
+// CARROS
 // =====================
 
-function drawCar(ctx, px, py, angle, color) {
-    ctx.save();
-    ctx.translate(px + 15, py + 15);
-    ctx.rotate(angle);
-
-    drawBaseF1(ctx, 30, color, "#111", "#fff");
-
-    ctx.restore();
-}
-
-function drawBaseF1(ctx, s, bodyColor, wingColor, detailColor = '#fff') {
+function drawBaseF1(ctx, bodyColor, wingColor, detailColor = '#fff') {
     ctx.fillStyle = '#111';
-    ctx.fillRect(-13, -11, 6, 8);
-    ctx.fillRect(7, -11, 6, 8);
-    ctx.fillRect(-14, 5, 7, 9);
-    ctx.fillRect(7, 5, 7, 9);
+    ctx.fillRect(2, 4, 6, 8);
+    ctx.fillRect(22, 4, 6, 8);
+    ctx.fillRect(1, 20, 7, 9);
+    ctx.fillRect(22, 20, 7, 9);
 
     ctx.fillStyle = '#444';
-    ctx.fillRect(-7, -8, 14, 2);
-    ctx.fillRect(-8, 9, 16, 2);
+    ctx.fillRect(8, 7, 14, 2);
+    ctx.fillRect(7, 24, 16, 2);
 
     ctx.fillStyle = wingColor;
-    ctx.fillRect(-11, -13, 22, 3);
+    ctx.fillRect(4, 2, 22, 3);
 
     ctx.fillStyle = bodyColor;
-    ctx.fillRect(-4, -10, 8, 20);
-    ctx.fillRect(-7, 1, 14, 6);
+    ctx.fillRect(11, 5, 8, 20);
+    ctx.fillRect(8, 16, 14, 6);
 
     ctx.fillStyle = wingColor;
-    ctx.fillRect(-10, 13, 20, 4);
+    ctx.fillRect(5, 26, 20, 4);
 
     ctx.fillStyle = detailColor;
-    ctx.fillRect(-2, -1, 4, 4);
-
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
-    ctx.fillRect(-3, -7, 2, 4);
+    ctx.fillRect(13, 14, 4, 4);
 }
 
-// resize
+const CAR_MODELS = [
+    (ctx)=>drawBaseF1(ctx,'#d40000','#111'),
+    (ctx)=>drawBaseF1(ctx,'#c0c0c0','#00d2be'),
+    (ctx)=>drawBaseF1(ctx,'#0600ef','#fcd700'),
+    (ctx)=>drawBaseF1(ctx,'#111','#cfb53b'),
+    (ctx)=>drawBaseF1(ctx,'#004225','#fff'),
+    (ctx)=>drawBaseF1(ctx,'#ff8700','#004cff'),
+    (ctx)=>drawBaseF1(ctx,'#ffffff','#dd0000'),
+    (ctx)=>drawBaseF1(ctx,'#222','#111'),
+    (ctx)=>drawBaseF1(ctx,'#fff200','#000'),
+    (ctx)=>drawBaseF1(ctx,'#ff00ff','#4b0082'),
+    (ctx)=>drawBaseF1(ctx,'#0093cc','#000')
+];
+
+let carSprites = {};
+
+function getCarSprite(id){
+    if(carSprites[id]) return carSprites[id];
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 30;
+    canvas.height = 30;
+    const ctx = canvas.getContext("2d");
+
+    const modelIndex = Math.abs(hash(id)) % CAR_MODELS.length;
+    CAR_MODELS[modelIndex](ctx);
+
+    carSprites[id] = canvas;
+    return canvas;
+}
+
+function hash(str){
+    let h = 0;
+    for(let i=0;i<str.length;i++){
+        h = str.charCodeAt(i) + ((h<<5)-h);
+    }
+    return h;
+}
+
+// =====================
+// RESIZE
+// =====================
+
 window.onresize = () => {
     c.width = innerWidth;
     c.height = innerHeight;
@@ -79,14 +98,14 @@ window.onresize();
 onkeydown = e => k[e.key] = 1;
 onkeyup = e => k[e.key] = 0;
 
-// websocket
+// =====================
+// WEBSOCKET
+// =====================
+
 const ws = new WebSocket(WS_URL);
 
 ws.onopen = () => {
-    ws.send(JSON.stringify({
-        type: "join",
-        id: PLAYER_ID
-    }));
+    ws.send(JSON.stringify({ type:"join", id:PLAYER_ID }));
 };
 
 ws.onmessage = (event) => {
@@ -98,113 +117,93 @@ ws.onmessage = (event) => {
             players: data.players
         });
 
-        if (stateBuffer.length > 20) {
-            stateBuffer.shift();
-        }
+        if (stateBuffer.length > 20) stateBuffer.shift();
     }
 };
 
 // envio
-setInterval(() => {
-    if (ws.readyState !== 1) return;
+setInterval(()=>{
+    if(ws.readyState !== 1) return;
 
     ws.send(JSON.stringify({
-        type: "move",
-        id: PLAYER_ID,
-        x: p.x,
-        y: p.y,
-        angle: p.angle
+        type:"move",
+        id:PLAYER_ID,
+        x:p.x,
+        y:p.y,
+        angle:p.angle
     }));
-}, 50);
+},50);
 
 // =====================
 // LOOP
 // =====================
 
-function loop() {
+function loop(){
 
-    // CONTROLES (ESTILO CARRO)
-    if (k.ArrowLeft || k.a) p.angle -= 0.05;
-    if (k.ArrowRight || k.d) p.angle += 0.05;
+    let moving = false;
 
-    if (k.ArrowUp || k.w) p.speed += 0.2;
-    if (k.ArrowDown || k.s) p.speed -= 0.2;
+    if (k.ArrowUp || k.w) { p.y -= p.s; p.angle = -Math.PI/2; moving = true; }
+    if (k.ArrowDown || k.s) { p.y += p.s; p.angle = Math.PI/2; moving = true; }
+    if (k.ArrowLeft || k.a) { p.x -= p.s; p.angle = Math.PI; moving = true; }
+    if (k.ArrowRight || k.d) { p.x += p.s; p.angle = 0; moving = true; }
 
-    // atrito
-    p.speed *= 0.95;
+    p.x = Math.max(0, Math.min(c.width - 30, p.x));
+    p.y = Math.max(0, Math.min(c.height - 30, p.y));
 
-    // movimento baseado no ângulo
-    p.x += Math.cos(p.angle) * p.speed;
-    p.y += Math.sin(p.angle) * p.speed;
-
-    x.fillStyle = "#fff";
+    x.fillStyle = "#ccc";
     x.fillRect(0, 0, c.width, c.height);
 
     const renderTime = Date.now() - RENDER_DELAY;
 
     let older, newer;
 
-    for (let i = 0; i < stateBuffer.length - 1; i++) {
-        if (
-            stateBuffer[i].time <= renderTime &&
-            stateBuffer[i + 1].time >= renderTime
-        ) {
+    for(let i=0;i<stateBuffer.length-1;i++){
+        if(stateBuffer[i].time <= renderTime && stateBuffer[i+1].time >= renderTime){
             older = stateBuffer[i];
-            newer = stateBuffer[i + 1];
+            newer = stateBuffer[i+1];
             break;
         }
     }
 
     // OUTROS
-    if (older && newer) {
+    if(older && newer){
+        const t = (renderTime - older.time)/(newer.time - older.time);
 
-        const t = (renderTime - older.time) / (newer.time - older.time);
+        for(let id in newer.players){
 
-        for (let id in newer.players) {
-
-            if (id === PLAYER_ID) continue;
+            if(id === PLAYER_ID) continue;
 
             const p1 = older.players[id];
             const p2 = newer.players[id];
-            if (!p1 || !p2) continue;
+            if(!p1 || !p2) continue;
 
-            const ix = p1.x + (p2.x - p1.x) * t;
-            const iy = p1.y + (p2.y - p1.y) * t;
+            const ix = p1.x + (p2.x - p1.x)*t;
+            const iy = p1.y + (p2.y - p1.y)*t;
 
-            const ia = (p1.angle || 0) + ((p2.angle || 0) - (p1.angle || 0)) * t;
+            const angle = p2.angle || 0;
 
-            drawCar(x, ix, iy, ia, "#" + intToColor(id));
-        }
-    }
-
-    // fallback
-    else if (stateBuffer.length > 0) {
-        const latest = stateBuffer[stateBuffer.length - 1];
-
-        for (let id in latest.players) {
-            if (id === PLAYER_ID) continue;
-
-            const pl = latest.players[id];
-            drawCar(x, pl.x, pl.y, pl.angle || 0, "#" + intToColor(id));
+            drawRotated(ix, iy, angle, getCarSprite(id));
         }
     }
 
     // VOCÊ
-    drawCar(x, p.x, p.y, p.angle, "#000");
+    drawRotated(p.x, p.y, p.angle, getCarSprite(PLAYER_ID));
 
     requestAnimationFrame(loop);
 }
 
 loop();
 
-// cor
-function intToColor(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    let color = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-    return "000000".substring(0, 6 - color.length) + color;
+// =====================
+// ROTAÇÃO VISUAL
+// =====================
+
+function drawRotated(px, py, angle, sprite){
+    x.save();
+    x.translate(px + 15, py + 15);
+    x.rotate(angle);
+    x.drawImage(sprite, -15, -15);
+    x.restore();
 }
 </script>
 
