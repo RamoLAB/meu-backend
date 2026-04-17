@@ -7,7 +7,17 @@
 const c = g;
 const x = c.getContext("2d");
 
-let p = { x: 50, y: 50, s: 5 };
+// =====================
+// PLAYER (AGORA COM FÍSICA)
+// =====================
+
+let p = {
+    x: 50,
+    y: 50,
+    angle: 0,
+    speed: 0
+};
+
 let k = {};
 
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
@@ -16,7 +26,47 @@ const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 let stateBuffer = [];
 const RENDER_DELAY = 50;
 
-let worldTime = 0;
+// =====================
+// CARRO
+// =====================
+
+function drawCar(ctx, px, py, angle, color) {
+    ctx.save();
+    ctx.translate(px + 15, py + 15);
+    ctx.rotate(angle);
+
+    drawBaseF1(ctx, 30, color, "#111", "#fff");
+
+    ctx.restore();
+}
+
+function drawBaseF1(ctx, s, bodyColor, wingColor, detailColor = '#fff') {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(-13, -11, 6, 8);
+    ctx.fillRect(7, -11, 6, 8);
+    ctx.fillRect(-14, 5, 7, 9);
+    ctx.fillRect(7, 5, 7, 9);
+
+    ctx.fillStyle = '#444';
+    ctx.fillRect(-7, -8, 14, 2);
+    ctx.fillRect(-8, 9, 16, 2);
+
+    ctx.fillStyle = wingColor;
+    ctx.fillRect(-11, -13, 22, 3);
+
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(-4, -10, 8, 20);
+    ctx.fillRect(-7, 1, 14, 6);
+
+    ctx.fillStyle = wingColor;
+    ctx.fillRect(-10, 13, 20, 4);
+
+    ctx.fillStyle = detailColor;
+    ctx.fillRect(-2, -1, 4, 4);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillRect(-3, -7, 2, 4);
+}
 
 // resize
 window.onresize = () => {
@@ -43,12 +93,6 @@ ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
     if (data.type === "state") {
-
-        // 👇 NOVO: tempo global
-        if (data.world) {
-            worldTime = data.world.time;
-        }
-
         stateBuffer.push({
             time: Date.now(),
             players: data.players
@@ -60,7 +104,7 @@ ws.onmessage = (event) => {
     }
 };
 
-// envio de posição
+// envio
 setInterval(() => {
     if (ws.readyState !== 1) return;
 
@@ -68,20 +112,30 @@ setInterval(() => {
         type: "move",
         id: PLAYER_ID,
         x: p.x,
-        y: p.y
+        y: p.y,
+        angle: p.angle
     }));
 }, 50);
 
-// loop principal
+// =====================
+// LOOP
+// =====================
+
 function loop() {
 
-    if (k.ArrowUp || k.w) p.y -= p.s;
-    if (k.ArrowDown || k.s) p.y += p.s;
-    if (k.ArrowLeft || k.a) p.x -= p.s;
-    if (k.ArrowRight || k.d) p.x += p.s;
+    // CONTROLES (ESTILO CARRO)
+    if (k.ArrowLeft || k.a) p.angle -= 0.05;
+    if (k.ArrowRight || k.d) p.angle += 0.05;
 
-    p.x = Math.max(0, Math.min(c.width - 30, p.x));
-    p.y = Math.max(0, Math.min(c.height - 30, p.y));
+    if (k.ArrowUp || k.w) p.speed += 0.2;
+    if (k.ArrowDown || k.s) p.speed -= 0.2;
+
+    // atrito
+    p.speed *= 0.95;
+
+    // movimento baseado no ângulo
+    p.x += Math.cos(p.angle) * p.speed;
+    p.y += Math.sin(p.angle) * p.speed;
 
     x.fillStyle = "#fff";
     x.fillRect(0, 0, c.width, c.height);
@@ -101,6 +155,7 @@ function loop() {
         }
     }
 
+    // OUTROS
     if (older && newer) {
 
         const t = (renderTime - older.time) / (newer.time - older.time);
@@ -111,52 +166,38 @@ function loop() {
 
             const p1 = older.players[id];
             const p2 = newer.players[id];
-
             if (!p1 || !p2) continue;
 
             const ix = p1.x + (p2.x - p1.x) * t;
             const iy = p1.y + (p2.y - p1.y) * t;
 
-            x.fillStyle = "#" + intToColor(id);
-            x.fillRect(ix, iy, 30, 30);
+            const ia = (p1.angle || 0) + ((p2.angle || 0) - (p1.angle || 0)) * t;
+
+            drawCar(x, ix, iy, ia, "#" + intToColor(id));
         }
     }
 
+    // fallback
     else if (stateBuffer.length > 0) {
-
         const latest = stateBuffer[stateBuffer.length - 1];
 
         for (let id in latest.players) {
             if (id === PLAYER_ID) continue;
 
             const pl = latest.players[id];
-
-            x.fillStyle = "#" + intToColor(id);
-            x.fillRect(pl.x, pl.y, 30, 30);
+            drawCar(x, pl.x, pl.y, pl.angle || 0, "#" + intToColor(id));
         }
     }
 
-    // você
-    x.fillStyle = "#000";
-    x.fillRect(p.x, p.y, 30, 30);
-
-    // =====================
-    // TIMER GLOBAL (NOVO)
-    // =====================
-
-    const timeLeft = Math.max(0, 60 - Math.floor(worldTime / 1000));
-
-    x.fillStyle = "#000";
-    x.font = "20px Arial";
-    x.textAlign = "center";
-    x.fillText("Tempo: " + timeLeft + "s", c.width / 2, 30);
+    // VOCÊ
+    drawCar(x, p.x, p.y, p.angle, "#000");
 
     requestAnimationFrame(loop);
 }
 
 loop();
 
-// cor por id
+// cor
 function intToColor(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
