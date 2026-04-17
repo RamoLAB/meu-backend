@@ -1,136 +1,198 @@
 <!DOCTYPE html>
 <html>
-<body style="margin:0; overflow:hidden; background:#ccc">
-<canvas id="c"></canvas>
+<body style="margin:0; overflow:hidden; background:#fff">
+<canvas id="g"></canvas>
 
 <script>
-const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d");
+const c = g;
+const x = c.getContext("2d");
 
-canvas.width = innerWidth;
-canvas.height = innerHeight;
+let p = { x: 50, y: 50, s: 5 };
+let k = {};
+
+const PLAYER_ID = Math.random().toString(36).substring(2, 10);
+const WS_URL = "wss://meu-backend-0rzt.onrender.com";
+
+let stateBuffer = [];
+const RENDER_DELAY = 50;
 
 // =========================
-// PLAYER
+// CARROS (SPRITES)
 // =========================
-let car = {
-    x: 300,
-    y: 300,
-    angle: 0,
+function drawBaseF1(ctx, bodyColor, wingColor, detailColor = '#fff') {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(2, 4, 6, 8);
+    ctx.fillRect(22, 4, 6, 8);
+    ctx.fillRect(1, 20, 7, 9);
+    ctx.fillRect(22, 20, 7, 9);
 
-    speed: 0,
-    maxSpeed: 8,
-    accel: 0.4,
-    friction: 0.96,
-    turnSpeed: 0.05,
+    ctx.fillStyle = '#444';
+    ctx.fillRect(8, 7, 14, 2);
+    ctx.fillRect(7, 24, 16, 2);
 
-    width: 30,
-    height: 30,
+    ctx.fillStyle = wingColor;
+    ctx.fillRect(4, 2, 22, 3);
 
-    lap: 0,
-    lastCross: 0
+    ctx.fillStyle = bodyColor;
+    ctx.fillRect(11, 5, 8, 20);
+    ctx.fillRect(8, 16, 14, 6);
+
+    ctx.fillStyle = wingColor;
+    ctx.fillRect(5, 26, 20, 4);
+
+    ctx.fillStyle = detailColor;
+    ctx.fillRect(13, 14, 4, 4);
+}
+
+const CAR_MODELS = [
+    (ctx)=>drawBaseF1(ctx,'#d40000','#111'),
+    (ctx)=>drawBaseF1(ctx,'#c0c0c0','#00d2be'),
+    (ctx)=>drawBaseF1(ctx,'#0600ef','#fcd700'),
+    (ctx)=>drawBaseF1(ctx,'#111','#cfb53b'),
+    (ctx)=>drawBaseF1(ctx,'#004225','#fff'),
+    (ctx)=>drawBaseF1(ctx,'#ff8700','#004cff'),
+    (ctx)=>drawBaseF1(ctx,'#ffffff','#dd0000'),
+    (ctx)=>drawBaseF1(ctx,'#222','#111'),
+    (ctx)=>drawBaseF1(ctx,'#fff200','#000'),
+    (ctx)=>drawBaseF1(ctx,'#ff00ff','#4b0082'),
+    (ctx)=>drawBaseF1(ctx,'#0093cc','#000')
+];
+
+let carSprites = {};
+
+function getCarSprite(id){
+    if(carSprites[id]) return carSprites[id];
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 30;
+    canvas.height = 30;
+    const ctx = canvas.getContext("2d");
+
+    const index = Math.abs(hash(id)) % CAR_MODELS.length;
+    CAR_MODELS[index](ctx);
+
+    carSprites[id] = canvas;
+    return canvas;
+}
+
+function hash(str){
+    let h = 0;
+    for(let i=0;i<str.length;i++){
+        h = str.charCodeAt(i) + ((h<<5)-h);
+    }
+    return h;
+}
+
+// =========================
+// RESIZE
+// =========================
+window.onresize = () => {
+    c.width = innerWidth;
+    c.height = innerHeight;
+};
+window.onresize();
+
+// input
+onkeydown = e => k[e.key] = 1;
+onkeyup = e => k[e.key] = 0;
+
+// =========================
+// WEBSOCKET
+// =========================
+const ws = new WebSocket(WS_URL);
+
+ws.onopen = () => {
+    ws.send(JSON.stringify({ type:"join", id:PLAYER_ID }));
 };
 
-let keys = {};
-onkeydown = e => keys[e.key] = 1;
-onkeyup = e => keys[e.key] = 0;
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
 
-// =========================
-// TRACK
-// =========================
-const track = {
-    startLine: { x: 500, y: 200, w: 200, h: 10 }
+    if (data.type === "state") {
+        stateBuffer.push({
+            time: Date.now(),
+            players: data.players
+        });
+
+        if (stateBuffer.length > 20) stateBuffer.shift();
+    }
 };
 
-// =========================
-// UPDATE
-// =========================
-function update() {
+// envio
+setInterval(()=>{
+    if(ws.readyState !== 1) return;
 
-    if (keys.ArrowUp || keys.w) car.speed += car.accel;
-    if (keys.ArrowDown || keys.s) car.speed -= car.accel;
-
-    car.speed = Math.max(-car.maxSpeed/2, Math.min(car.maxSpeed, car.speed));
-
-    if (keys.ArrowLeft || keys.a) {
-        car.angle -= car.turnSpeed * (car.speed / car.maxSpeed);
-    }
-
-    if (keys.ArrowRight || keys.d) {
-        car.angle += car.turnSpeed * (car.speed / car.maxSpeed);
-    }
-
-    car.x += Math.cos(car.angle) * car.speed;
-    car.y += Math.sin(car.angle) * car.speed;
-
-    car.speed *= car.friction;
-
-    const now = Date.now();
-
-    if (
-        car.x > track.startLine.x &&
-        car.x < track.startLine.x + track.startLine.w &&
-        car.y > track.startLine.y &&
-        car.y < track.startLine.y + track.startLine.h
-    ) {
-        if (now - car.lastCross > 1000 && car.speed > 1) {
-            car.lap++;
-            car.lastCross = now;
-        }
-    }
-}
-
-// =========================
-// DRAW CAR
-// =========================
-function drawCar(c) {
-    ctx.save();
-    ctx.translate(c.x, c.y);
-    ctx.rotate(c.angle);
-
-    ctx.fillStyle = "#ff0000";
-    ctx.fillRect(-15, -15, 30, 30);
-
-    ctx.restore();
-}
-
-// =========================
-// DRAW
-// =========================
-function draw() {
-
-    // FUNDO CINZA
-    ctx.fillStyle = "#ccc";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // PISTA
-    ctx.fillStyle = "#777";
-    ctx.fillRect(200, 100, 800, 400);
-
-    // LINHA DE CHEGADA
-    ctx.fillStyle = "#000";
-    ctx.fillRect(
-        track.startLine.x,
-        track.startLine.y,
-        track.startLine.w,
-        track.startLine.h
-    );
-
-    drawCar(car);
-
-    // HUD simples
-    ctx.fillStyle = "#000";
-    ctx.font = "16px Arial";
-    ctx.fillText("Vel: " + car.speed.toFixed(2), 20, 30);
-    ctx.fillText("Volta: " + car.lap, 20, 50);
-}
+    ws.send(JSON.stringify({
+        type:"move",
+        id:PLAYER_ID,
+        x:p.x,
+        y:p.y
+    }));
+},50);
 
 // =========================
 // LOOP
 // =========================
-function loop() {
-    update();
-    draw();
+function loop(){
+
+    // movimento local
+    if (k.ArrowUp || k.w) p.y -= p.s;
+    if (k.ArrowDown || k.s) p.y += p.s;
+    if (k.ArrowLeft || k.a) p.x -= p.s;
+    if (k.ArrowRight || k.d) p.x += p.s;
+
+    p.x = Math.max(0, Math.min(c.width - 30, p.x));
+    p.y = Math.max(0, Math.min(c.height - 30, p.y));
+
+    x.fillStyle = "#fff";
+    x.fillRect(0, 0, c.width, c.height);
+
+    const renderTime = Date.now() - RENDER_DELAY;
+
+    let older, newer;
+
+    for(let i=0;i<stateBuffer.length-1;i++){
+        if(stateBuffer[i].time <= renderTime && stateBuffer[i+1].time >= renderTime){
+            older = stateBuffer[i];
+            newer = stateBuffer[i+1];
+            break;
+        }
+    }
+
+    // OUTROS jogadores (suave)
+    if(older && newer){
+        const t = (renderTime - older.time)/(newer.time - older.time);
+
+        for(let id in newer.players){
+
+            if(id === PLAYER_ID) continue;
+
+            const p1 = older.players[id];
+            const p2 = newer.players[id];
+            if(!p1 || !p2) continue;
+
+            const ix = p1.x + (p2.x - p1.x)*t;
+            const iy = p1.y + (p2.y - p1.y)*t;
+
+            x.drawImage(getCarSprite(id), ix, iy);
+        }
+    }
+
+    // fallback
+    else if(stateBuffer.length > 0){
+        const latest = stateBuffer[stateBuffer.length - 1];
+
+        for(let id in latest.players){
+            if(id === PLAYER_ID) continue;
+
+            const pl = latest.players[id];
+            x.drawImage(getCarSprite(id), pl.x, pl.y);
+        }
+    }
+
+    // VOCÊ
+    x.drawImage(getCarSprite(PLAYER_ID), p.x, p.y);
+
     requestAnimationFrame(loop);
 }
 
