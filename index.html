@@ -13,8 +13,11 @@ let k = {};
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
 const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 
-let serverPlayers = {};
-let renderPlayers = {};
+// histórico de estados (buffer)
+let stateBuffer = [];
+
+// atraso intencional (ms)
+const RENDER_DELAY = 100;
 
 // resize
 window.onresize = () => {
@@ -41,32 +44,15 @@ ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
     if (data.type === "state") {
+        stateBuffer.push({
+            time: Date.now(),
+            players: data.players
+        });
 
-        const newPlayers = data.players;
-
-        for (let id in newPlayers) {
-
-            if (!renderPlayers[id]) {
-                renderPlayers[id] = {
-                    x: newPlayers[id].x,
-                    y: newPlayers[id].y,
-                    vx: 0,
-                    vy: 0
-                };
-            } else {
-
-                let r = renderPlayers[id];
-                let n = newPlayers[id];
-
-                r.vx = (n.x - r.x);
-                r.vy = (n.y - r.y);
-
-                r.tx = n.x;
-                r.ty = n.y;
-            }
+        // evita crescer infinito
+        if (stateBuffer.length > 20) {
+            stateBuffer.shift();
         }
-
-        serverPlayers = newPlayers;
     }
 };
 
@@ -85,6 +71,7 @@ setInterval(() => {
 // loop principal
 function loop() {
 
+    // movimento local (instantâneo)
     if (k.ArrowUp || k.w) p.y -= p.s;
     if (k.ArrowDown || k.s) p.y += p.s;
     if (k.ArrowLeft || k.a) p.x -= p.s;
@@ -96,20 +83,41 @@ function loop() {
     x.fillStyle = "#fff";
     x.fillRect(0, 0, c.width, c.height);
 
-    for (let id in renderPlayers) {
+    // tempo que queremos renderizar (no passado)
+    const renderTime = Date.now() - RENDER_DELAY;
 
-        let r = renderPlayers[id];
+    // encontra dois estados para interpolar
+    let older, newer;
 
-        if (!serverPlayers[id]) continue;
+    for (let i = 0; i < stateBuffer.length - 1; i++) {
+        if (
+            stateBuffer[i].time <= renderTime &&
+            stateBuffer[i + 1].time >= renderTime
+        ) {
+            older = stateBuffer[i];
+            newer = stateBuffer[i + 1];
+            break;
+        }
+    }
 
-        r.x += r.vx * 0.2;
-        r.y += r.vy * 0.2;
+    if (older && newer) {
 
-        r.x += (serverPlayers[id].x - r.x) * 0.15;
-        r.y += (serverPlayers[id].y - r.y) * 0.15;
+        const t = (renderTime - older.time) / (newer.time - older.time);
 
-        x.fillStyle = "#" + intToColor(id);
-        x.fillRect(r.x, r.y, 30, 30);
+        for (let id in newer.players) {
+
+            const p1 = older.players[id];
+            const p2 = newer.players[id];
+
+            if (!p1 || !p2) continue;
+
+            // interpolação suave
+            const ix = p1.x + (p2.x - p1.x) * t;
+            const iy = p1.y + (p2.y - p1.y) * t;
+
+            x.fillStyle = "#" + intToColor(id);
+            x.fillRect(ix, iy, 30, 30);
+        }
     }
 
     requestAnimationFrame(loop);
@@ -117,7 +125,7 @@ function loop() {
 
 loop();
 
-// cor fixa por id
+// cor por id
 function intToColor(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
