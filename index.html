@@ -13,11 +13,11 @@ let k = {};
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
 const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 
-// histórico de estados (buffer)
+// buffer de estados
 let stateBuffer = [];
 
-// atraso intencional (ms)
-const RENDER_DELAY = 100;
+// atraso reduzido (mais responsivo)
+const RENDER_DELAY = 50;
 
 // resize
 window.onresize = () => {
@@ -49,14 +49,13 @@ ws.onmessage = (event) => {
             players: data.players
         });
 
-        // evita crescer infinito
         if (stateBuffer.length > 20) {
             stateBuffer.shift();
         }
     }
 };
 
-// envio de posição
+// envio de movimento
 setInterval(() => {
     if (ws.readyState !== 1) return;
 
@@ -83,10 +82,8 @@ function loop() {
     x.fillStyle = "#fff";
     x.fillRect(0, 0, c.width, c.height);
 
-    // tempo que queremos renderizar (no passado)
     const renderTime = Date.now() - RENDER_DELAY;
 
-    // encontra dois estados para interpolar
     let older, newer;
 
     for (let i = 0; i < stateBuffer.length - 1; i++) {
@@ -100,6 +97,7 @@ function loop() {
         }
     }
 
+    // interpolação principal
     if (older && newer) {
 
         const t = (renderTime - older.time) / (newer.time - older.time);
@@ -111,12 +109,24 @@ function loop() {
 
             if (!p1 || !p2) continue;
 
-            // interpolação suave
             const ix = p1.x + (p2.x - p1.x) * t;
             const iy = p1.y + (p2.y - p1.y) * t;
 
             x.fillStyle = "#" + intToColor(id);
             x.fillRect(ix, iy, 30, 30);
+        }
+    }
+
+    // fallback (evita travamento visual)
+    else if (stateBuffer.length > 0) {
+
+        const latest = stateBuffer[stateBuffer.length - 1];
+
+        for (let id in latest.players) {
+            const pl = latest.players[id];
+
+            x.fillStyle = "#" + intToColor(id);
+            x.fillRect(pl.x, pl.y, 30, 30);
         }
     }
 
