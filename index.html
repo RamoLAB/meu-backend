@@ -11,11 +11,10 @@ let p = { x: 50, y: 50, s: 5 };
 let k = {};
 
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
-
-// ATENÇÃO: use wss em produção (Render)
 const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 
-let players = {};
+let serverPlayers = {};
+let renderPlayers = {};
 
 // resize
 window.onresize = () => {
@@ -28,7 +27,7 @@ window.onresize();
 onkeydown = e => k[e.key] = 1;
 onkeyup = e => k[e.key] = 0;
 
-// conexão websocket
+// websocket
 const ws = new WebSocket(WS_URL);
 
 ws.onopen = () => {
@@ -42,14 +41,39 @@ ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
     if (data.type === "state") {
-        players = data.players;
+        serverPlayers = data.players;
+
+        // cria ou atualiza “alvos”
+        for (let id in serverPlayers) {
+            if (!renderPlayers[id]) {
+                renderPlayers[id] = {
+                    x: serverPlayers[id].x,
+                    y: serverPlayers[id].y
+                };
+            }
+        }
     }
 };
 
-// loop principal (render + input)
+// input + envio
+function sendMove() {
+    if (ws.readyState !== 1) return;
+
+    ws.send(JSON.stringify({
+        type: "move",
+        id: PLAYER_ID,
+        x: p.x,
+        y: p.y
+    }));
+}
+
+// loop de envio leve
+setInterval(sendMove, 50);
+
+// loop principal
 function loop() {
 
-    // movimento local (fluido)
+    // movimento local
     if (k.ArrowUp || k.w) p.y -= p.s;
     if (k.ArrowDown || k.s) p.y += p.s;
     if (k.ArrowLeft || k.a) p.x -= p.s;
@@ -58,28 +82,27 @@ function loop() {
     p.x = Math.max(0, Math.min(c.width - 30, p.x));
     p.y = Math.max(0, Math.min(c.height - 30, p.y));
 
-    // envia posição em tempo real
-    if (ws.readyState === 1) {
-        ws.send(JSON.stringify({
-            type: "move",
-            id: PLAYER_ID,
-            x: p.x,
-            y: p.y
-        }));
-    }
-
-    // render
+    // fundo
     x.fillStyle = "#fff";
     x.fillRect(0, 0, c.width, c.height);
 
-    for (let id in players) {
-        const pl = players[id];
-        if (!pl) continue;
+    // suavização (INTERPOLAÇÃO)
+    for (let id in serverPlayers) {
+
+        let target = serverPlayers[id];
+
+        if (!renderPlayers[id]) continue;
+
+        let r = renderPlayers[id];
+
+        // movimento suave em direção ao alvo
+        r.x += (target.x - r.x) * 0.2;
+        r.y += (target.y - r.y) * 0.2;
 
         let color = "#" + intToColor(id);
 
         x.fillStyle = color;
-        x.fillRect(pl.x, pl.y, 30, 30);
+        x.fillRect(r.x, r.y, 30, 30);
     }
 
     requestAnimationFrame(loop);
@@ -87,7 +110,7 @@ function loop() {
 
 loop();
 
-// cor estável por ID
+// cor fixa por id
 function intToColor(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
