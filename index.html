@@ -4,64 +4,45 @@
 
 <canvas id="g"></canvas>
 
-<!-- PEDAIS MINIMAL -->
+<!-- HUD -->
+<div style="position:fixed; top:10px; left:10px; font-family:sans-serif;">
+    Volta: <span id="lap">1</span>/5
+</div>
+
+<!-- PEDAIS -->
 <div style="position:fixed; bottom:20px; right:20px; display:flex; gap:12px;">
-    
-    <div id="brake" style="
-        width:80px; height:80px;
-        border:2px solid rgba(200,200,200,0.5);
-        border-radius:12px;
-        display:flex; align-items:center; justify-content:center;
-        color:rgba(200,200,200,0.7);
-        font-family:sans-serif;
-        user-select:none;
-    ">BRAKE</div>
-
-    <div id="gas" style="
-        width:80px; height:80px;
-        border:2px solid rgba(200,200,200,0.5);
-        border-radius:12px;
-        display:flex; align-items:center; justify-content:center;
-        color:rgba(200,200,200,0.7);
-        font-family:sans-serif;
-        user-select:none;
-    ">GAS</div>
-
+    <div id="brake" style="width:80px;height:80px;border:2px solid rgba(200,200,200,0.5);border-radius:12px;display:flex;align-items:center;justify-content:center;">BRAKE</div>
+    <div id="gas" style="width:80px;height:80px;border:2px solid rgba(200,200,200,0.5);border-radius:12px;display:flex;align-items:center;justify-content:center;">GAS</div>
 </div>
 
 <script>
 const c = g;
 const x = c.getContext("2d");
 
-let p = { x:200, y:200, angle:0, speed:0 };
+let p = {
+    x: 400,
+    y: 300,
+    angle: 0,
+    speed: 0,
+    lap: 1,
+    lastCross: false
+};
 
 let k = {};
 let accelerating = false;
 let braking = false;
 
-const PLAYER_ID = Math.random().toString(36).substring(2, 10);
-const WS_URL = "wss://meu-backend-0rzt.onrender.com";
+// pista
+const track = {
+    cx: 600,
+    cy: 400,
+    rx: 300,
+    ry: 200,
+    width: 80
+};
 
-let stateBuffer = [];
-const RENDER_DELAY = 80; // leve aumento → reduz jitter
-
-// =====================
-// COR CONSISTENTE
-// =====================
-function idToColor(id){
-    let hash = 0;
-    for(let i=0;i<id.length;i++){
-        hash = id.charCodeAt(i) + ((hash<<5)-hash);
-    }
-
-    let r = 100 + ((hash>>0)&155);
-    let g = 100 + ((hash>>8)&155);
-    let b = 100 + ((hash>>16)&155);
-
-    return `rgb(${r},${g},${b})`;
-}
-
-const MY_COLOR = idToColor(PLAYER_ID);
+// linha de chegada (vertical)
+const finishLineX = track.cx;
 
 // resize
 onresize = () => {
@@ -83,41 +64,7 @@ brake.onmousedown = () => braking = true;
 brake.onmouseup = () => braking = false;
 brake.onmouseleave = () => braking = false;
 
-// websocket
-const ws = new WebSocket(WS_URL);
-
-ws.onopen = () => {
-    ws.send(JSON.stringify({ type:"join", id:PLAYER_ID }));
-};
-
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-
-    if(data.type === "state"){
-        stateBuffer.push({
-            time: Date.now(),
-            players: data.players
-        });
-
-        if(stateBuffer.length > 25) stateBuffer.shift();
-    }
-};
-
-// envio
-setInterval(()=>{
-    if(ws.readyState !== 1) return;
-
-    ws.send(JSON.stringify({
-        type:"move",
-        id:PLAYER_ID,
-        x:p.x,
-        y:p.y
-    }));
-},50);
-
-// =====================
-// LOOP
-// =====================
+// loop
 function loop(){
 
     // direção
@@ -127,7 +74,7 @@ function loop(){
     // aceleração
     if(accelerating){
         p.speed += 0.2;
-        if(p.speed > 5) p.speed = 5;
+        if(p.speed > 6) p.speed = 6;
     }
 
     // freio
@@ -138,80 +85,58 @@ function loop(){
 
     // inércia
     if(!accelerating && !braking){
-        p.speed *= 0.985;
+        p.speed *= 0.99;
     }
 
     // movimento
     p.x += Math.cos(p.angle) * p.speed;
     p.y += Math.sin(p.angle) * p.speed;
 
-    // limites
-    p.x = Math.max(0, Math.min(c.width, p.x));
-    p.y = Math.max(0, Math.min(c.height, p.y));
+    // =====================
+    // DETECÇÃO DE VOLTA
+    // =====================
+    let crossing = (p.x > finishLineX && p.y > track.cy);
 
-    // render base
+    if(crossing && !p.lastCross){
+        if(p.lap < 5){
+            p.lap++;
+            document.getElementById("lap").innerText = p.lap;
+        }
+    }
+
+    p.lastCross = crossing;
+
+    // =====================
+    // RENDER
+    // =====================
     x.fillStyle = "#fff";
     x.fillRect(0,0,c.width,c.height);
 
-    const renderTime = Date.now() - RENDER_DELAY;
+    // pista (asfalto)
+    x.fillStyle = "#555";
+    x.beginPath();
+    x.ellipse(track.cx, track.cy, track.rx, track.ry, 0, 0, Math.PI*2);
+    x.fill();
 
-    let older=null, newer=null;
+    // miolo (grama)
+    x.fillStyle = "#2e8b57";
+    x.beginPath();
+    x.ellipse(track.cx, track.cy, track.rx-track.width, track.ry-track.width, 0, 0, Math.PI*2);
+    x.fill();
 
-    for(let i=0;i<stateBuffer.length-1;i++){
-        if(
-            stateBuffer[i].time <= renderTime &&
-            stateBuffer[i+1].time >= renderTime
-        ){
-            older = stateBuffer[i];
-            newer = stateBuffer[i+1];
-            break;
-        }
-    }
+    // linha chegada
+    x.strokeStyle = "#fff";
+    x.lineWidth = 4;
+    x.beginPath();
+    x.moveTo(finishLineX, track.cy - track.ry);
+    x.lineTo(finishLineX, track.cy + track.ry);
+    x.stroke();
 
-    // =====================
-    // DESENHO ESTÁVEL (SEM PISCAR)
-    // =====================
-
-    if(older && newer){
-
-        const t = (renderTime - older.time) / (newer.time - older.time);
-
-        for(let id in newer.players){
-
-            if(id === PLAYER_ID) continue;
-
-            const p1 = older.players[id];
-            const p2 = newer.players[id];
-            if(!p1 || !p2) continue;
-
-            const ix = p1.x + (p2.x - p1.x) * t;
-            const iy = p1.y + (p2.y - p1.y) * t;
-
-            x.fillStyle = idToColor(id);
-            x.fillRect(ix, iy, 30, 30);
-        }
-    }
-    else if(stateBuffer.length > 0){
-
-        // fallback ESTÁVEL (sem alternância)
-        const latest = stateBuffer[stateBuffer.length - 1];
-
-        for(let id in latest.players){
-
-            if(id === PLAYER_ID) continue;
-
-            const pl = latest.players[id];
-
-            x.fillStyle = idToColor(id);
-            x.fillRect(pl.x, pl.y, 30, 30);
-        }
-    }
-
-    // seu carro
+    // carro
     x.save();
     x.translate(p.x, p.y);
     x.rotate(p.angle);
-    x.fillStyle = MY_COLOR;
+    x.fillStyle = "#000";
     x.fillRect(-15, -15, 30, 30);
     x.restore();
 
