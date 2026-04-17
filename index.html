@@ -41,22 +41,37 @@ ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
     if (data.type === "state") {
-        serverPlayers = data.players;
 
-        // cria ou atualiza “alvos”
-        for (let id in serverPlayers) {
+        const newPlayers = data.players;
+
+        for (let id in newPlayers) {
+
             if (!renderPlayers[id]) {
                 renderPlayers[id] = {
-                    x: serverPlayers[id].x,
-                    y: serverPlayers[id].y
+                    x: newPlayers[id].x,
+                    y: newPlayers[id].y,
+                    vx: 0,
+                    vy: 0
                 };
+            } else {
+
+                let r = renderPlayers[id];
+                let n = newPlayers[id];
+
+                r.vx = (n.x - r.x);
+                r.vy = (n.y - r.y);
+
+                r.tx = n.x;
+                r.ty = n.y;
             }
         }
+
+        serverPlayers = newPlayers;
     }
 };
 
-// input + envio
-function sendMove() {
+// envio de posição
+setInterval(() => {
     if (ws.readyState !== 1) return;
 
     ws.send(JSON.stringify({
@@ -65,15 +80,11 @@ function sendMove() {
         x: p.x,
         y: p.y
     }));
-}
-
-// loop de envio leve
-setInterval(sendMove, 50);
+}, 50);
 
 // loop principal
 function loop() {
 
-    // movimento local
     if (k.ArrowUp || k.w) p.y -= p.s;
     if (k.ArrowDown || k.s) p.y += p.s;
     if (k.ArrowLeft || k.a) p.x -= p.s;
@@ -82,26 +93,22 @@ function loop() {
     p.x = Math.max(0, Math.min(c.width - 30, p.x));
     p.y = Math.max(0, Math.min(c.height - 30, p.y));
 
-    // fundo
     x.fillStyle = "#fff";
     x.fillRect(0, 0, c.width, c.height);
 
-    // suavização (INTERPOLAÇÃO)
-    for (let id in serverPlayers) {
-
-        let target = serverPlayers[id];
-
-        if (!renderPlayers[id]) continue;
+    for (let id in renderPlayers) {
 
         let r = renderPlayers[id];
 
-        // movimento suave em direção ao alvo
-        r.x += (target.x - r.x) * 0.2;
-        r.y += (target.y - r.y) * 0.2;
+        if (!serverPlayers[id]) continue;
 
-        let color = "#" + intToColor(id);
+        r.x += r.vx * 0.2;
+        r.y += r.vy * 0.2;
 
-        x.fillStyle = color;
+        r.x += (serverPlayers[id].x - r.x) * 0.15;
+        r.y += (serverPlayers[id].y - r.y) * 0.15;
+
+        x.fillStyle = "#" + intToColor(id);
         x.fillRect(r.x, r.y, 30, 30);
     }
 
