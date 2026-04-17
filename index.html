@@ -1,7 +1,45 @@
 <!DOCTYPE html>
 <html>
 <body style="margin:0; overflow:hidden; background:#fff">
+
 <canvas id="g"></canvas>
+
+<!-- PEDAIS -->
+<div id="pedals">
+    <div id="brake" class="pedal">FREIO</div>
+    <div id="accel" class="pedal">ACELERAR</div>
+</div>
+
+<style>
+#pedals{
+    position:absolute;
+    bottom:20px;
+    right:20px;
+    display:flex;
+    gap:10px;
+}
+
+.pedal{
+    width:100px;
+    height:120px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:Arial;
+    font-size:12px;
+    color:#fff;
+    background:rgba(0,0,0,0.6);
+    border-radius:10px;
+    user-select:none;
+}
+
+#brake { border:2px solid red; }
+#accel { border:2px solid green; }
+
+.pedal:active{
+    background:rgba(255,255,255,0.2);
+}
+</style>
 
 <script>
 const c = g;
@@ -17,7 +55,30 @@ let stateBuffer = [];
 const RENDER_DELAY = 50;
 
 // =========================
-// CARROS (SPRITES)
+// PEDAIS → INPUT
+// =========================
+const accel = document.getElementById("accel");
+const brake = document.getElementById("brake");
+
+// aceleração = ArrowUp
+accel.onmousedown = () => k["ArrowUp"] = 1;
+accel.onmouseup = () => k["ArrowUp"] = 0;
+accel.onmouseleave = () => k["ArrowUp"] = 0;
+
+// freio = ArrowDown
+brake.onmousedown = () => k["ArrowDown"] = 1;
+brake.onmouseup = () => k["ArrowDown"] = 0;
+brake.onmouseleave = () => k["ArrowDown"] = 0;
+
+// suporte mobile
+accel.ontouchstart = () => k["ArrowUp"] = 1;
+accel.ontouchend = () => k["ArrowUp"] = 0;
+
+brake.ontouchstart = () => k["ArrowDown"] = 1;
+brake.ontouchend = () => k["ArrowDown"] = 0;
+
+// =========================
+// CARROS
 // =========================
 function drawBaseF1(ctx, bodyColor, wingColor, detailColor = '#fff') {
     ctx.fillStyle = '#111';
@@ -47,15 +108,7 @@ function drawBaseF1(ctx, bodyColor, wingColor, detailColor = '#fff') {
 const CAR_MODELS = [
     (ctx)=>drawBaseF1(ctx,'#d40000','#111'),
     (ctx)=>drawBaseF1(ctx,'#c0c0c0','#00d2be'),
-    (ctx)=>drawBaseF1(ctx,'#0600ef','#fcd700'),
-    (ctx)=>drawBaseF1(ctx,'#111','#cfb53b'),
-    (ctx)=>drawBaseF1(ctx,'#004225','#fff'),
-    (ctx)=>drawBaseF1(ctx,'#ff8700','#004cff'),
-    (ctx)=>drawBaseF1(ctx,'#ffffff','#dd0000'),
-    (ctx)=>drawBaseF1(ctx,'#222','#111'),
-    (ctx)=>drawBaseF1(ctx,'#fff200','#000'),
-    (ctx)=>drawBaseF1(ctx,'#ff00ff','#4b0082'),
-    (ctx)=>drawBaseF1(ctx,'#0093cc','#000')
+    (ctx)=>drawBaseF1(ctx,'#0600ef','#fcd700')
 ];
 
 let carSprites = {};
@@ -68,8 +121,7 @@ function getCarSprite(id){
     canvas.height = 30;
     const ctx = canvas.getContext("2d");
 
-    const index = Math.abs(hash(id)) % CAR_MODELS.length;
-    CAR_MODELS[index](ctx);
+    CAR_MODELS[Math.abs(hash(id)) % CAR_MODELS.length](ctx);
 
     carSprites[id] = canvas;
     return canvas;
@@ -92,7 +144,7 @@ window.onresize = () => {
 };
 window.onresize();
 
-// input
+// teclado
 onkeydown = e => k[e.key] = 1;
 onkeyup = e => k[e.key] = 0;
 
@@ -135,7 +187,6 @@ setInterval(()=>{
 // =========================
 function loop(){
 
-    // movimento local
     if (k.ArrowUp || k.w) p.y -= p.s;
     if (k.ArrowDown || k.s) p.y += p.s;
     if (k.ArrowLeft || k.a) p.x -= p.s;
@@ -159,12 +210,10 @@ function loop(){
         }
     }
 
-    // OUTROS jogadores (suave)
     if(older && newer){
         const t = (renderTime - older.time)/(newer.time - older.time);
 
         for(let id in newer.players){
-
             if(id === PLAYER_ID) continue;
 
             const p1 = older.players[id];
@@ -178,19 +227,6 @@ function loop(){
         }
     }
 
-    // fallback
-    else if(stateBuffer.length > 0){
-        const latest = stateBuffer[stateBuffer.length - 1];
-
-        for(let id in latest.players){
-            if(id === PLAYER_ID) continue;
-
-            const pl = latest.players[id];
-            x.drawImage(getCarSprite(id), pl.x, pl.y);
-        }
-    }
-
-    // VOCÊ
     x.drawImage(getCarSprite(PLAYER_ID), p.x, p.y);
 
     requestAnimationFrame(loop);
@@ -198,5 +234,6 @@ function loop(){
 
 loop();
 </script>
+
 </body>
 </html>
