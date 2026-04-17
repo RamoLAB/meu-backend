@@ -4,7 +4,6 @@
 
 <canvas id="g"></canvas>
 
-<!-- PEDAIS -->
 <div id="pedals">
     <div id="brake" class="pedal">FREIO</div>
     <div id="accel" class="pedal">ACELERAR</div>
@@ -18,139 +17,83 @@
     display:flex;
     gap:10px;
 }
-
 .pedal{
     width:100px;
     height:120px;
     display:flex;
     align-items:center;
     justify-content:center;
-    font-family:Arial;
-    font-size:12px;
     color:#fff;
     background:rgba(0,0,0,0.6);
     border-radius:10px;
     user-select:none;
 }
-
-#brake { border:2px solid red; }
-#accel { border:2px solid green; }
-
-.pedal:active{
-    background:rgba(255,255,255,0.2);
-}
+#brake{ border:2px solid red; }
+#accel{ border:2px solid green; }
 </style>
 
 <script>
 const c = g;
 const x = c.getContext("2d");
 
-let p = { x: 50, y: 50, s: 5 };
-let k = {};
-
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
 const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 
-let stateBuffer = [];
-const RENDER_DELAY = 50;
+let k = {};
+let accelPressed = false;
+let brakePressed = false;
 
 // =========================
-// PEDAIS → INPUT
+// CAR STATE (CORRETO)
 // =========================
+let p = {
+    x: 200,
+    y: 200,
+    angle: 0,
+    speed: 0,
+    maxSpeed: 6,
+    accel: 0.25,
+    friction: 0.96,
+    turnSpeed: 0.05
+};
+
+// =========================
+// INPUT
+// =========================
+onkeydown = e => k[e.key] = 1;
+onkeyup = e => k[e.key] = 0;
+
 const accel = document.getElementById("accel");
 const brake = document.getElementById("brake");
 
-// aceleração = ArrowUp
-accel.onmousedown = () => k["ArrowUp"] = 1;
-accel.onmouseup = () => k["ArrowUp"] = 0;
-accel.onmouseleave = () => k["ArrowUp"] = 0;
+accel.onmousedown = () => accelPressed = true;
+accel.onmouseup = () => accelPressed = false;
+accel.onmouseleave = () => accelPressed = false;
 
-// freio = ArrowDown
-brake.onmousedown = () => k["ArrowDown"] = 1;
-brake.onmouseup = () => k["ArrowDown"] = 0;
-brake.onmouseleave = () => k["ArrowDown"] = 0;
+brake.onmousedown = () => brakePressed = true;
+brake.onmouseup = () => brakePressed = false;
+brake.onmouseleave = () => brakePressed = false;
 
-// suporte mobile
-accel.ontouchstart = () => k["ArrowUp"] = 1;
-accel.ontouchend = () => k["ArrowUp"] = 0;
+accel.ontouchstart = () => accelPressed = true;
+accel.ontouchend = () => accelPressed = false;
 
-brake.ontouchstart = () => k["ArrowDown"] = 1;
-brake.ontouchend = () => k["ArrowDown"] = 0;
+brake.ontouchstart = () => brakePressed = true;
+brake.ontouchend = () => brakePressed = false;
 
 // =========================
-// CARROS
+// SPRITE
 // =========================
-function drawBaseF1(ctx, bodyColor, wingColor, detailColor = '#fff') {
-    ctx.fillStyle = '#111';
-    ctx.fillRect(2, 4, 6, 8);
-    ctx.fillRect(22, 4, 6, 8);
-    ctx.fillRect(1, 20, 7, 9);
-    ctx.fillRect(22, 20, 7, 9);
-
-    ctx.fillStyle = '#444';
-    ctx.fillRect(8, 7, 14, 2);
-    ctx.fillRect(7, 24, 16, 2);
-
-    ctx.fillStyle = wingColor;
-    ctx.fillRect(4, 2, 22, 3);
-
-    ctx.fillStyle = bodyColor;
-    ctx.fillRect(11, 5, 8, 20);
-    ctx.fillRect(8, 16, 14, 6);
-
-    ctx.fillStyle = wingColor;
-    ctx.fillRect(5, 26, 20, 4);
-
-    ctx.fillStyle = detailColor;
-    ctx.fillRect(13, 14, 4, 4);
+function drawCar(ctx){
+    ctx.fillStyle = "#d40000";
+    ctx.fillRect(-15, -15, 30, 30);
 }
-
-const CAR_MODELS = [
-    (ctx)=>drawBaseF1(ctx,'#d40000','#111'),
-    (ctx)=>drawBaseF1(ctx,'#c0c0c0','#00d2be'),
-    (ctx)=>drawBaseF1(ctx,'#0600ef','#fcd700')
-];
-
-let carSprites = {};
-
-function getCarSprite(id){
-    if(carSprites[id]) return carSprites[id];
-
-    const canvas = document.createElement("canvas");
-    canvas.width = 30;
-    canvas.height = 30;
-    const ctx = canvas.getContext("2d");
-
-    CAR_MODELS[Math.abs(hash(id)) % CAR_MODELS.length](ctx);
-
-    carSprites[id] = canvas;
-    return canvas;
-}
-
-function hash(str){
-    let h = 0;
-    for(let i=0;i<str.length;i++){
-        h = str.charCodeAt(i) + ((h<<5)-h);
-    }
-    return h;
-}
-
-// =========================
-// RESIZE
-// =========================
-window.onresize = () => {
-    c.width = innerWidth;
-    c.height = innerHeight;
-};
-window.onresize();
-
-// teclado
-onkeydown = e => k[e.key] = 1;
-onkeyup = e => k[e.key] = 0;
 
 // =========================
 // WEBSOCKET
 // =========================
+let stateBuffer = [];
+const RENDER_DELAY = 50;
+
 const ws = new WebSocket(WS_URL);
 
 ws.onopen = () => {
@@ -170,7 +113,6 @@ ws.onmessage = (event) => {
     }
 };
 
-// envio
 setInterval(()=>{
     if(ws.readyState !== 1) return;
 
@@ -183,20 +125,48 @@ setInterval(()=>{
 },50);
 
 // =========================
+// RESIZE
+// =========================
+window.onresize = () => {
+    c.width = innerWidth;
+    c.height = innerHeight;
+};
+window.onresize();
+
+// =========================
 // LOOP
 // =========================
 function loop(){
 
-    if (k.ArrowUp || k.w) p.y -= p.s;
-    if (k.ArrowDown || k.s) p.y += p.s;
-    if (k.ArrowLeft || k.a) p.x -= p.s;
-    if (k.ArrowRight || k.d) p.x += p.s;
+    // ROTAÇÃO (independente)
+    if (k.ArrowLeft || k.a) p.angle -= p.turnSpeed;
+    if (k.ArrowRight || k.d) p.angle += p.turnSpeed;
 
-    p.x = Math.max(0, Math.min(c.width - 30, p.x));
-    p.y = Math.max(0, Math.min(c.height - 30, p.y));
+    // ACELERAÇÃO (somente pedal)
+    if (accelPressed) {
+        p.speed += p.accel;
+    }
 
+    // FREIO = corta velocidade
+    if (brakePressed) {
+        p.speed *= 0.7;
+    }
+
+    // limite
+    p.speed = Math.max(0, Math.min(p.maxSpeed, p.speed));
+
+    // movimento real
+    p.x += Math.cos(p.angle) * p.speed;
+    p.y += Math.sin(p.angle) * p.speed;
+
+    // inércia
+    p.speed *= p.friction;
+
+    // =====================
+    // RENDER
+    // =====================
     x.fillStyle = "#fff";
-    x.fillRect(0, 0, c.width, c.height);
+    x.fillRect(0,0,c.width,c.height);
 
     const renderTime = Date.now() - RENDER_DELAY;
 
@@ -223,17 +193,22 @@ function loop(){
             const ix = p1.x + (p2.x - p1.x)*t;
             const iy = p1.y + (p2.y - p1.y)*t;
 
-            x.drawImage(getCarSprite(id), ix, iy);
+            x.fillStyle = "#888";
+            x.fillRect(ix, iy, 30, 30);
         }
     }
 
-    x.drawImage(getCarSprite(PLAYER_ID), p.x, p.y);
+    // VOCÊ (com rotação)
+    x.save();
+    x.translate(p.x, p.y);
+    x.rotate(p.angle);
+    drawCar(x);
+    x.restore();
 
     requestAnimationFrame(loop);
 }
 
 loop();
 </script>
-
 </body>
 </html>
