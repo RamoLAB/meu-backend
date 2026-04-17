@@ -7,7 +7,7 @@
 const c = g;
 const x = c.getContext("2d");
 
-let p = { x: 50, y: 50, s: 5 };
+let p = { x: 50, y: 50, s: 5, angle: 0 };
 let k = {};
 
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
@@ -17,10 +17,10 @@ let stateBuffer = [];
 const RENDER_DELAY = 50;
 
 // =====================
-// CARROS (GERAÇÃO)
+// CARROS
 // =====================
 
-function drawBaseF1(ctx, bodyColor, wingColor, detailColor = '#fff') {
+function drawBaseF1(ctx, bodyColor, wingColor) {
     ctx.fillStyle = '#111';
     ctx.fillRect(2, 4, 6, 8);
     ctx.fillRect(22, 4, 6, 8);
@@ -41,7 +41,7 @@ function drawBaseF1(ctx, bodyColor, wingColor, detailColor = '#fff') {
     ctx.fillStyle = wingColor;
     ctx.fillRect(5, 26, 20, 4);
 
-    ctx.fillStyle = detailColor;
+    ctx.fillStyle = '#fff';
     ctx.fillRect(13, 14, 4, 4);
 }
 
@@ -59,7 +59,6 @@ const CAR_MODELS = [
     (ctx)=>drawBaseF1(ctx,'#0093cc','#000')
 ];
 
-// cache de sprites
 let carSprites = {};
 
 function getCarSprite(id){
@@ -130,7 +129,8 @@ setInterval(()=>{
         type:"move",
         id:PLAYER_ID,
         x:p.x,
-        y:p.y
+        y:p.y,
+        angle:p.angle
     }));
 },50);
 
@@ -140,14 +140,24 @@ setInterval(()=>{
 
 function loop(){
 
-    // movimento local
-    if (k.ArrowUp || k.w) p.y -= p.s;
-    if (k.ArrowDown || k.s) p.y += p.s;
-    if (k.ArrowLeft || k.a) p.x -= p.s;
-    if (k.ArrowRight || k.d) p.x += p.s;
+    let dx = 0, dy = 0;
+
+    if (k.ArrowUp || k.w) dy -= 1;
+    if (k.ArrowDown || k.s) dy += 1;
+    if (k.ArrowLeft || k.a) dx -= 1;
+    if (k.ArrowRight || k.d) dx += 1;
+
+    // movimento
+    p.x += dx * p.s;
+    p.y += dy * p.s;
 
     p.x = Math.max(0, Math.min(c.width - 30, p.x));
     p.y = Math.max(0, Math.min(c.height - 30, p.y));
+
+    // calcula ângulo
+    if (dx !== 0 || dy !== 0) {
+        p.angle = Math.atan2(dy, dx) + Math.PI/2;
+    }
 
     x.fillStyle = "#ccc";
     x.fillRect(0, 0, c.width, c.height);
@@ -177,15 +187,26 @@ function loop(){
 
             const ix = p1.x + (p2.x - p1.x)*t;
             const iy = p1.y + (p2.y - p1.y)*t;
+            const angle = p2.angle || 0;
 
-            x.drawImage(getCarSprite(id), ix, iy);
+            drawRotated(ix, iy, angle, id);
         }
     }
 
-    // seu carro (instantâneo)
-    x.drawImage(getCarSprite(PLAYER_ID), p.x, p.y);
+    // seu carro
+    drawRotated(p.x, p.y, p.angle, PLAYER_ID);
 
     requestAnimationFrame(loop);
+}
+
+function drawRotated(px, py, angle, id){
+    const sprite = getCarSprite(id);
+
+    x.save();
+    x.translate(px + 15, py + 15);
+    x.rotate(angle);
+    x.drawImage(sprite, -15, -15);
+    x.restore();
 }
 
 loop();
