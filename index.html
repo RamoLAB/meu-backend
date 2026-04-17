@@ -4,92 +4,70 @@
 
 <canvas id="g"></canvas>
 
-<div id="pedals">
-    <div id="brake" class="pedal">FREIO</div>
-    <div id="accel" class="pedal">ACELERAR</div>
-</div>
+<!-- PEDAIS -->
+<div style="position:fixed; bottom:20px; right:20px; display:flex; gap:10px;">
+    <div id="brake" style="
+        width:80px; height:80px; background:#444; color:#fff;
+        display:flex; align-items:center; justify-content:center;
+        border-radius:10px; user-select:none;
+    ">BRAKE</div>
 
-<style>
-#pedals{
-    position:absolute;
-    bottom:20px;
-    right:20px;
-    display:flex;
-    gap:10px;
-}
-.pedal{
-    width:100px;
-    height:120px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    color:#fff;
-    background:rgba(0,0,0,0.6);
-    border-radius:10px;
-    user-select:none;
-}
-#brake{ border:2px solid red; }
-#accel{ border:2px solid green; }
-</style>
+    <div id="gas" style="
+        width:80px; height:80px; background:#0a0; color:#fff;
+        display:flex; align-items:center; justify-content:center;
+        border-radius:10px; user-select:none;
+    ">GAS</div>
+</div>
 
 <script>
 const c = g;
 const x = c.getContext("2d");
 
-const PLAYER_ID = Math.random().toString(36).substring(2, 10);
-const WS_URL = "wss://meu-backend-0rzt.onrender.com";
-
-let k = {};
-let accelPressed = false;
-let brakePressed = false;
-
-// =========================
-// CAR STATE
-// =========================
 let p = {
     x: 200,
     y: 200,
     angle: 0,
-    speed: 0,
-    maxSpeed: 6,
-    accel: 0.25,
-    friction: 0.96,
-    turnSpeed: 0.05
+    speed: 0
 };
 
-// =========================
-// INPUT
-// =========================
-onkeydown = e => k[e.key] = 1;
-onkeyup = e => k[e.key] = 0;
+let k = {};
+let accelerating = false;
+let braking = false;
 
-const accel = document.getElementById("accel");
-const brake = document.getElementById("brake");
+const PLAYER_ID = Math.random().toString(36).substring(2, 10);
+const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 
-accel.onmousedown = () => accelPressed = true;
-accel.onmouseup = () => accelPressed = false;
-accel.onmouseleave = () => accelPressed = false;
-
-brake.onmousedown = () => brakePressed = true;
-brake.onmouseup = () => brakePressed = false;
-brake.onmouseleave = () => brakePressed = false;
-
-accel.ontouchstart = () => accelPressed = true;
-accel.ontouchend = () => accelPressed = false;
-
-brake.ontouchstart = () => brakePressed = true;
-brake.ontouchend = () => brakePressed = false;
-
-// =========================
-// WEBSOCKET
-// =========================
 let stateBuffer = [];
 const RENDER_DELAY = 50;
 
+// resize
+onresize = () => {
+    c.width = innerWidth;
+    c.height = innerHeight;
+};
+onresize();
+
+// teclado
+onkeydown = e => k[e.key.toLowerCase()] = 1;
+onkeyup = e => k[e.key.toLowerCase()] = 0;
+
+// pedais
+const gas = document.getElementById("gas");
+const brake = document.getElementById("brake");
+
+gas.onmousedown = () => accelerating = true;
+gas.onmouseup = () => accelerating = false;
+gas.onmouseleave = () => accelerating = false;
+
+brake.onmousedown = () => braking = true;
+brake.onmouseup = () => braking = false;
+brake.onmouseleave = () => braking = false;
+
+// websocket
 const ws = new WebSocket(WS_URL);
 
 ws.onopen = () => {
-    ws.send(JSON.stringify({ type:"join", id:PLAYER_ID }));
+    ws.send(JSON.stringify({ type: "join", id: PLAYER_ID }));
 };
 
 ws.onmessage = (event) => {
@@ -105,96 +83,99 @@ ws.onmessage = (event) => {
     }
 };
 
-setInterval(()=>{
-    if(ws.readyState !== 1) return;
+// envio
+setInterval(() => {
+    if (ws.readyState !== 1) return;
 
     ws.send(JSON.stringify({
-        type:"move",
-        id:PLAYER_ID,
-        x:p.x,
-        y:p.y
+        type: "move",
+        id: PLAYER_ID,
+        x: p.x,
+        y: p.y
     }));
-},50);
+}, 50);
 
-// =========================
-// RESIZE
-// =========================
-window.onresize = () => {
-    c.width = innerWidth;
-    c.height = innerHeight;
-};
-window.onresize();
+// loop
+function loop() {
 
-// =========================
-// LOOP
-// =========================
-function loop(){
+    // DIREÇÃO (teclado)
+    if (k["arrowleft"] || k["a"] || k["arrowup"] || k["w"]) {
+        p.angle -= 0.05;
+    }
 
-    // ROTAÇÃO (corrigido)
-    if (k.ArrowLeft || k.a || k.ArrowUp) p.angle -= p.turnSpeed;
-    if (k.ArrowRight || k.d || k.ArrowDown) p.angle += p.turnSpeed;
+    if (k["arrowright"] || k["d"] || k["arrowdown"] || k["s"]) {
+        p.angle += 0.05;
+    }
 
     // ACELERAÇÃO
-    if (accelPressed) {
-        p.speed += p.accel;
+    if (accelerating) {
+        p.speed += 0.2;
+        if (p.speed > 5) p.speed = 5;
     }
 
     // FREIO
-    if (brakePressed) {
-        p.speed *= 0.7;
+    if (braking) {
+        p.speed *= 0.8;
+        if (p.speed < 0.05) p.speed = 0;
     }
 
-    // limites
-    p.speed = Math.max(0, Math.min(p.maxSpeed, p.speed));
+    // INÉRCIA
+    if (!accelerating && !braking) {
+        p.speed *= 0.98;
+    }
 
-    // movimento
+    // MOVIMENTO
     p.x += Math.cos(p.angle) * p.speed;
     p.y += Math.sin(p.angle) * p.speed;
 
-    // inércia
-    p.speed *= p.friction;
+    // limites
+    p.x = Math.max(0, Math.min(c.width, p.x));
+    p.y = Math.max(0, Math.min(c.height, p.y));
 
-    // =====================
-    // RENDER
-    // =====================
+    // render
     x.fillStyle = "#fff";
-    x.fillRect(0,0,c.width,c.height);
+    x.fillRect(0, 0, c.width, c.height);
 
     const renderTime = Date.now() - RENDER_DELAY;
 
     let older, newer;
 
-    for(let i=0;i<stateBuffer.length-1;i++){
-        if(stateBuffer[i].time <= renderTime && stateBuffer[i+1].time >= renderTime){
+    for (let i = 0; i < stateBuffer.length - 1; i++) {
+        if (
+            stateBuffer[i].time <= renderTime &&
+            stateBuffer[i + 1].time >= renderTime
+        ) {
             older = stateBuffer[i];
-            newer = stateBuffer[i+1];
+            newer = stateBuffer[i + 1];
             break;
         }
     }
 
-    if(older && newer){
-        const t = (renderTime - older.time)/(newer.time - older.time);
+    if (older && newer) {
+        const t = (renderTime - older.time) / (newer.time - older.time);
 
-        for(let id in newer.players){
-            if(id === PLAYER_ID) continue;
+        for (let id in newer.players) {
+
+            if (id === PLAYER_ID) continue;
 
             const p1 = older.players[id];
             const p2 = newer.players[id];
-            if(!p1 || !p2) continue;
 
-            const ix = p1.x + (p2.x - p1.x)*t;
-            const iy = p1.y + (p2.y - p1.y)*t;
+            if (!p1 || !p2) continue;
 
-            x.fillStyle = "#888";
+            const ix = p1.x + (p2.x - p1.x) * t;
+            const iy = p1.y + (p2.y - p1.y) * t;
+
+            x.fillStyle = "#" + intToColor(id);
             x.fillRect(ix, iy, 30, 30);
         }
     }
 
-    // você
+    // SEU CARRO (rotacionado)
     x.save();
     x.translate(p.x, p.y);
     x.rotate(p.angle);
-    x.fillStyle = "#d40000";
+    x.fillStyle = "#000";
     x.fillRect(-15, -15, 30, 30);
     x.restore();
 
@@ -202,6 +183,16 @@ function loop(){
 }
 
 loop();
+
+// cor por id
+function intToColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    let color = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+    return "000000".substring(0, 6 - color.length) + color;
+}
 </script>
 
 </body>
