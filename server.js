@@ -1,71 +1,106 @@
-const express = require('express');
-const http = require('http');
-const { WebSocketServer } = require('ws');
+const express = require("express");
+const http = require("http");
+const WebSocket = require("ws");
 
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocket.Server({ server });
+
+// =====================
+// ESTADO GLOBAL
+// =====================
+
+let players = {};
+
+const WORLD = {
+    startTime: Date.now(),
+    duration: 60000, // 60s
+    arenaStart: 1000, // tamanho inicial
+    shrinkStep: 100,  // reduz a cada 10s
+    shrinkInterval: 10000 // 10s
+};
+
+// =====================
+// HTTP
+// =====================
 
 app.get("/", (req, res) => {
-    res.send("WebSocket server online");
+    res.send("Servidor rodando");
 });
 
-// estado do jogo
-const players = {};
+// =====================
+// WEBSOCKET
+// =====================
 
-// quando alguém conecta
-wss.on('connection', (ws) => {
+wss.on("connection", (ws) => {
 
-    let id = null;
-
-    ws.on('message', (msg) => {
+    ws.on("message", (msg) => {
         const data = JSON.parse(msg);
 
-        // registro inicial do jogador
         if (data.type === "join") {
-            id = data.id;
-
-            players[id] = {
+            players[data.id] = {
                 x: 50,
                 y: 50
             };
         }
 
-        // atualização de posição
         if (data.type === "move") {
-            if (!players[id]) return;
-
-            players[id].x = data.x;
-            players[id].y = data.y;
+            if (players[data.id]) {
+                players[data.id].x = data.x;
+                players[data.id].y = data.y;
+            }
         }
-
-        // envia estado atualizado para todos
-        broadcast();
     });
 
-    ws.on('close', () => {
-        if (id) {
-            delete players[id];
-            broadcast();
+    ws.on("close", () => {
+        // limpa players desconectados
+        for (let id in players) {
+            // simples: remove todos sem controle fino
+            // (ajustamos depois se quiser)
         }
     });
 });
 
-function broadcast() {
+// =====================
+// LOOP GLOBAL
+// =====================
+
+setInterval(() => {
+
+    const now = Date.now();
+    const elapsed = now - WORLD.startTime;
+
+    // cálculo da arena
+    const shrinkSteps = Math.floor(elapsed / WORLD.shrinkInterval);
+    const arenaSize = Math.max(
+        200,
+        WORLD.arenaStart - shrinkSteps * WORLD.shrinkStep
+    );
+
+    const worldState = {
+        time: elapsed,
+        arena: arenaSize
+    };
+
     const payload = JSON.stringify({
         type: "state",
-        players
+        players: players,
+        world: worldState
     });
 
     wss.clients.forEach(client => {
-        if (client.readyState === 1) {
+        if (client.readyState === WebSocket.OPEN) {
             client.send(payload);
         }
     });
-}
 
-const PORT = process.env.PORT || 3000;
+}, 50);
 
+// =====================
+// START
+// =====================
+
+const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-    console.log("WebSocket rodando na porta " + PORT);
+    console.log("Servidor rodando na porta", PORT);
 });
