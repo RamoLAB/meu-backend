@@ -4,16 +4,18 @@
 <canvas id="g"></canvas>
 
 <script>
-const c = g, x = c.getContext("2d");
+const c = g;
+const x = c.getContext("2d");
 
 let p = { x: 50, y: 50, s: 5 };
 let k = {};
 
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
-const SERVER_URL = "https://meu-backend-0rzt.onrender.com";
 
-let playersCache = {};
-let worldTime = 0;
+// ATENÇÃO: use wss em produção (Render)
+const WS_URL = "wss://meu-backend-0rzt.onrender.com";
+
+let players = {};
 
 // resize
 window.onresize = () => {
@@ -26,36 +28,25 @@ window.onresize();
 onkeydown = e => k[e.key] = 1;
 onkeyup = e => k[e.key] = 0;
 
-// players (2x por segundo)
-setInterval(() => {
-    fetch(SERVER_URL + "/players")
-        .then(r => r.json())
-        .then(data => playersCache = data)
-        .catch(() => {});
-}, 500);
+// conexão websocket
+const ws = new WebSocket(WS_URL);
 
-// posição (5x por segundo)
-setInterval(() => {
-    fetch(SERVER_URL + "/posicao", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            id: PLAYER_ID,
-            x: p.x,
-            y: p.y
-        })
-    }).catch(() => {});
-}, 200);
+ws.onopen = () => {
+    ws.send(JSON.stringify({
+        type: "join",
+        id: PLAYER_ID
+    }));
+};
 
-// world time (cronômetro global)
-setInterval(() => {
-    fetch(SERVER_URL + "/world")
-        .then(r => r.json())
-        .then(data => worldTime = data.time)
-        .catch(() => {});
-}, 500);
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
 
-// loop render
+    if (data.type === "state") {
+        players = data.players;
+    }
+};
+
+// loop principal (render + input)
 function loop() {
 
     // movimento local (fluido)
@@ -67,13 +58,22 @@ function loop() {
     p.x = Math.max(0, Math.min(c.width - 30, p.x));
     p.y = Math.max(0, Math.min(c.height - 30, p.y));
 
-    // fundo
+    // envia posição em tempo real
+    if (ws.readyState === 1) {
+        ws.send(JSON.stringify({
+            type: "move",
+            id: PLAYER_ID,
+            x: p.x,
+            y: p.y
+        }));
+    }
+
+    // render
     x.fillStyle = "#fff";
     x.fillRect(0, 0, c.width, c.height);
 
-    // players
-    for (let id in playersCache) {
-        const pl = playersCache[id];
+    for (let id in players) {
+        const pl = players[id];
         if (!pl) continue;
 
         let color = "#" + intToColor(id);
@@ -82,20 +82,12 @@ function loop() {
         x.fillRect(pl.x, pl.y, 30, 30);
     }
 
-    // cronômetro global
-    const timeLeft = 60 - Math.floor((worldTime / 1000) % 60);
-
-    x.fillStyle = "#000";
-    x.font = "20px Arial";
-    x.textAlign = "center";
-    x.fillText("Tempo: " + timeLeft + "s", c.width / 2, 30);
-
     requestAnimationFrame(loop);
 }
 
 loop();
 
-// hash de cor por ID
+// cor estável por ID
 function intToColor(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
