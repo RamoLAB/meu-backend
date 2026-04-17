@@ -7,21 +7,21 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 // =====================
-// ESTADO GLOBAL
+// ESTADO GLOBAL 🌍
 // =====================
 
 let players = {};
 
 const WORLD = {
     startTime: Date.now(),
-    duration: 60000,       // 60s
+    duration: 60000,       // Ciclo de 60s
     arenaStart: 1000,
     shrinkStep: 100,
     shrinkInterval: 10000
 };
 
 // =====================
-// HTTP
+// HTTP 🌐
 // =====================
 
 app.get("/", (req, res) => {
@@ -29,29 +29,33 @@ app.get("/", (req, res) => {
 });
 
 // =====================
-// WEBSOCKET
+// WEBSOCKET 🔌
 // =====================
 
 wss.on("connection", (ws) => {
-
     let playerId = null;
 
     ws.on("message", (msg) => {
         const data = JSON.parse(msg);
 
+        // JOIN: Agora inclui ângulo e cor
         if (data.type === "join") {
             playerId = data.id;
-
             players[playerId] = {
                 x: 50,
-                y: 50
+                y: 50,
+                angle: 0,
+                color: data.color || "#4CAF50" // Cor padrão caso não venha no pacote
             };
         }
 
+        // MOVE: Atualiza posição, rotação e mantém a cor
         if (data.type === "move") {
             if (players[data.id]) {
                 players[data.id].x = data.x;
                 players[data.id].y = data.y;
+                players[data.id].angle = data.angle;
+                players[data.id].color = data.color;
             }
         }
     });
@@ -64,22 +68,21 @@ wss.on("connection", (ws) => {
 });
 
 // =====================
-// LOOP GLOBAL
+// LOOP GLOBAL (Broadcast) 🔄
 // =====================
 
 setInterval(() => {
-
     const now = Date.now();
     let elapsed = now - WORLD.startTime;
 
-    // reinicia o ciclo de 60s
+    // Reinicia o ciclo do cronômetro de 60s
     if (elapsed >= WORLD.duration) {
         WORLD.startTime = now;
         elapsed = 0;
     }
 
+    // Lógica de encolhimento da arena
     const shrinkSteps = Math.floor(elapsed / WORLD.shrinkInterval);
-
     const arenaSize = Math.max(
         200,
         WORLD.arenaStart - shrinkSteps * WORLD.shrinkStep
@@ -90,6 +93,7 @@ setInterval(() => {
         arena: arenaSize
     };
 
+    // Envia o estado completo para todos os clientes
     const payload = JSON.stringify({
         type: "state",
         players: players,
@@ -105,7 +109,7 @@ setInterval(() => {
 }, 50);
 
 // =====================
-// START
+// START 🚀
 // =====================
 
 const PORT = process.env.PORT || 10000;
