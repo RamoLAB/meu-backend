@@ -1,182 +1,153 @@
 <!DOCTYPE html>
 <html>
-<body style="margin:0; overflow:hidden; background:#111">
-<canvas id="g"></canvas>
-
-<!-- ================= HUD ================= -->
-<div id="hud">
-
-    <!-- SEMÁFORO -->
-    <div id="lights">
-        <div class="light red"></div>
-        <div class="light red"></div>
-        <div class="light red"></div>
-        <div class="light yellow"></div>
-        <div class="light green"></div>
-        <div class="label">LARGADA</div>
-    </div>
-
-    <!-- POSIÇÕES -->
-    <div id="positions">
-        <h3>Posições</h3>
-        <div>1 🥇</div>
-        <div>2 🥈</div>
-        <div>3 🥉</div>
-        <div>4</div>
-        <div>5</div>
-    </div>
-
-    <!-- PNEUS / BOOST -->
-    <div id="status">
-        <div class="bar">
-            <label>Pneus</label>
-            <div class="meter"><div id="tireBar"></div></div>
-        </div>
-
-        <div class="bar">
-            <label>Boost</label>
-            <div class="meter"><div id="boostBar"></div></div>
-        </div>
-    </div>
-
-    <!-- VOLTAS -->
-    <div id="laps">
-        4 / 5
-    </div>
-
-    <!-- PEDAIS -->
-    <div id="pedals">
-        <div class="pedal brake">FREIO</div>
-        <div class="pedal accel">ACELERADOR</div>
-    </div>
-
-</div>
-
-<style>
-/* HUD base */
-#hud {
-    position:absolute;
-    inset:0;
-    pointer-events:none;
-    color:white;
-    font-family:Arial;
-}
-
-/* SEMÁFORO */
-#lights {
-    position:absolute;
-    top:20px;
-    left:50%;
-    transform:translateX(-50%);
-    text-align:center;
-}
-.light {
-    width:18px;
-    height:18px;
-    border-radius:50%;
-    margin:4px auto;
-    background:#333;
-}
-.red { background:#900; }
-.yellow { background:#aa0; }
-.green { background:#0a0; }
-
-.label {
-    font-size:12px;
-    margin-top:4px;
-}
-
-/* POSIÇÕES */
-#positions {
-    position:absolute;
-    top:20px;
-    right:20px;
-    background:rgba(0,0,0,0.5);
-    padding:10px;
-    border-radius:8px;
-}
-
-/* STATUS */
-#status {
-    position:absolute;
-    bottom:20px;
-    right:20px;
-    width:180px;
-    background:rgba(0,0,0,0.5);
-    padding:10px;
-    border-radius:8px;
-}
-
-.bar {
-    margin-bottom:10px;
-}
-
-.meter {
-    width:100%;
-    height:10px;
-    background:#333;
-}
-
-#tireBar {
-    width:70%;
-    height:100%;
-    background:#0af;
-}
-
-#boostBar {
-    width:40%;
-    height:100%;
-    background:#ff0;
-}
-
-/* VOLTAS */
-#laps {
-    position:absolute;
-    top:20px;
-    left:20px;
-    font-size:18px;
-    background:rgba(0,0,0,0.5);
-    padding:8px;
-    border-radius:6px;
-}
-
-/* PEDAIS */
-#pedals {
-    position:absolute;
-    bottom:20px;
-    left:20px;
-    display:flex;
-    gap:10px;
-}
-
-.pedal {
-    width:100px;
-    height:120px;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    background:rgba(0,0,0,0.6);
-    border-radius:8px;
-    font-size:12px;
-}
-
-.brake { border:2px solid #f00; }
-.accel { border:2px solid #0f0; }
-
-</style>
+<body style="margin:0; overflow:hidden; background:#222">
+<canvas id="c"></canvas>
 
 <script>
-// apenas placeholder visual (sem mecânica ainda)
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");
 
-// simulação de barras animando
-setInterval(()=>{
-    document.getElementById("tireBar").style.width =
-        (50 + Math.random()*50) + "%";
+canvas.width = innerWidth;
+canvas.height = innerHeight;
 
-    document.getElementById("boostBar").style.width =
-        (Math.random()*100) + "%";
-}, 500);
+// =========================
+// PLAYER (car physics)
+// =========================
+let car = {
+    x: 300,
+    y: 300,
+    angle: 0,
+
+    speed: 0,
+    maxSpeed: 8,
+    accel: 0.4,
+    friction: 0.96,
+    turnSpeed: 0.05,
+
+    width: 30,
+    height: 30,
+
+    lap: 0,
+    lastCross: 0
+};
+
+let keys = {};
+onkeydown = e => keys[e.key] = 1;
+onkeyup = e => keys[e.key] = 0;
+
+// =========================
+// TRACK
+// =========================
+const track = {
+    startLine: { x: 500, y: 200, w: 200, h: 10 }
+};
+
+// =========================
+// UPDATE
+// =========================
+function update() {
+
+    // aceleração
+    if (keys.ArrowUp || keys.w) {
+        car.speed += car.accel;
+    }
+
+    if (keys.ArrowDown || keys.s) {
+        car.speed -= car.accel;
+    }
+
+    // limite velocidade
+    car.speed = Math.max(-car.maxSpeed/2, Math.min(car.maxSpeed, car.speed));
+
+    // curva (proporcional à velocidade)
+    if (keys.ArrowLeft || keys.a) {
+        car.angle -= car.turnSpeed * (car.speed / car.maxSpeed);
+    }
+
+    if (keys.ArrowRight || keys.d) {
+        car.angle += car.turnSpeed * (car.speed / car.maxSpeed);
+    }
+
+    // movimento
+    car.x += Math.cos(car.angle) * car.speed;
+    car.y += Math.sin(car.angle) * car.speed;
+
+    // atrito
+    car.speed *= car.friction;
+
+    // =========================
+    // DETECÇÃO DE VOLTA
+    // =========================
+    const now = Date.now();
+
+    if (
+        car.x > track.startLine.x &&
+        car.x < track.startLine.x + track.startLine.w &&
+        car.y > track.startLine.y &&
+        car.y < track.startLine.y + track.startLine.h
+    ) {
+        // evita múltiplos triggers
+        if (now - car.lastCross > 1000 && car.speed > 1) {
+            car.lap++;
+            car.lastCross = now;
+        }
+    }
+}
+
+// =========================
+// DRAW CAR (com rotação)
+// =========================
+function drawCar(c) {
+    ctx.save();
+    ctx.translate(c.x, c.y);
+    ctx.rotate(c.angle);
+
+    ctx.fillStyle = "#f00";
+    ctx.fillRect(-15, -15, 30, 30);
+
+    ctx.restore();
+}
+
+// =========================
+// DRAW
+// =========================
+function draw() {
+
+    ctx.fillStyle = "#333";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // pista (placeholder)
+    ctx.fillStyle = "#555";
+    ctx.fillRect(200, 100, 800, 400);
+
+    // linha de chegada
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(
+        track.startLine.x,
+        track.startLine.y,
+        track.startLine.w,
+        track.startLine.h
+    );
+
+    drawCar(car);
+
+    // HUD mínimo
+    ctx.fillStyle = "#fff";
+    ctx.font = "16px Arial";
+    ctx.fillText("Vel: " + car.speed.toFixed(2), 20, 30);
+    ctx.fillText("Volta: " + car.lap, 20, 50);
+}
+
+// =========================
+// LOOP
+// =========================
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
 </script>
-
 </body>
 </html>
