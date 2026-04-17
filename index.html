@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html>
-<body style="margin:0; overflow:hidden; background:#222">
+<body style="margin:0; overflow:hidden; background:#ccc">
 <canvas id="c"></canvas>
 
 <script>
@@ -11,7 +11,7 @@ canvas.width = innerWidth;
 canvas.height = innerHeight;
 
 // =========================
-// PLAYER (car physics)
+// PLAYER
 // =========================
 let car = {
     x: 300,
@@ -47,19 +47,11 @@ const track = {
 // =========================
 function update() {
 
-    // aceleração
-    if (keys.ArrowUp || keys.w) {
-        car.speed += car.accel;
-    }
+    if (keys.ArrowUp || keys.w) car.speed += car.accel;
+    if (keys.ArrowDown || keys.s) car.speed -= car.accel;
 
-    if (keys.ArrowDown || keys.s) {
-        car.speed -= car.accel;
-    }
-
-    // limite velocidade
     car.speed = Math.max(-car.maxSpeed/2, Math.min(car.maxSpeed, car.speed));
 
-    // curva (proporcional à velocidade)
     if (keys.ArrowLeft || keys.a) {
         car.angle -= car.turnSpeed * (car.speed / car.maxSpeed);
     }
@@ -68,16 +60,11 @@ function update() {
         car.angle += car.turnSpeed * (car.speed / car.maxSpeed);
     }
 
-    // movimento
     car.x += Math.cos(car.angle) * car.speed;
     car.y += Math.sin(car.angle) * car.speed;
 
-    // atrito
     car.speed *= car.friction;
 
-    // =========================
-    // DETECÇÃO DE VOLTA
-    // =========================
     const now = Date.now();
 
     if (
@@ -86,7 +73,6 @@ function update() {
         car.y > track.startLine.y &&
         car.y < track.startLine.y + track.startLine.h
     ) {
-        // evita múltiplos triggers
         if (now - car.lastCross > 1000 && car.speed > 1) {
             car.lap++;
             car.lastCross = now;
@@ -95,14 +81,14 @@ function update() {
 }
 
 // =========================
-// DRAW CAR (com rotação)
+// DRAW CAR
 // =========================
 function drawCar(c) {
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate(c.angle);
 
-    ctx.fillStyle = "#f00";
+    ctx.fillStyle = "#ff0000";
     ctx.fillRect(-15, -15, 30, 30);
 
     ctx.restore();
@@ -113,15 +99,16 @@ function drawCar(c) {
 // =========================
 function draw() {
 
-    ctx.fillStyle = "#333";
+    // FUNDO CINZA
+    ctx.fillStyle = "#ccc";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // pista (placeholder)
-    ctx.fillStyle = "#555";
+    // PISTA
+    ctx.fillStyle = "#777";
     ctx.fillRect(200, 100, 800, 400);
 
-    // linha de chegada
-    ctx.fillStyle = "#fff";
+    // LINHA DE CHEGADA
+    ctx.fillStyle = "#000";
     ctx.fillRect(
         track.startLine.x,
         track.startLine.y,
@@ -131,8 +118,8 @@ function draw() {
 
     drawCar(car);
 
-    // HUD mínimo
-    ctx.fillStyle = "#fff";
+    // HUD simples
+    ctx.fillStyle = "#000";
     ctx.font = "16px Arial";
     ctx.fillText("Vel: " + car.speed.toFixed(2), 20, 30);
     ctx.fillText("Volta: " + car.lap, 20, 50);
