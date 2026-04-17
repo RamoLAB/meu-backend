@@ -7,7 +7,10 @@
 const c = g;
 const x = c.getContext("2d");
 
-let p = { x: 50, y: 50, s: 5, angle: 0 };
+// =====================
+// PLAYER (COM ROTAÇÃO)
+// =====================
+let p = { x: 50, y: 50, s: 5, angle: 0, targetAngle: 0 };
 let k = {};
 
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
@@ -94,7 +97,10 @@ window.onresize = () => {
 };
 window.onresize();
 
-// input
+// =====================
+// INPUT
+// =====================
+
 onkeydown = e => k[e.key] = 1;
 onkeyup = e => k[e.key] = 0;
 
@@ -129,8 +135,7 @@ setInterval(()=>{
         type:"move",
         id:PLAYER_ID,
         x:p.x,
-        y:p.y,
-        angle:p.angle
+        y:p.y
     }));
 },50);
 
@@ -140,12 +145,16 @@ setInterval(()=>{
 
 function loop(){
 
-    let moving = false;
+    // movimento + direção
+    if (k.ArrowUp || k.w) { p.y -= p.s; p.targetAngle = -Math.PI/2; }
+    if (k.ArrowDown || k.s) { p.y += p.s; p.targetAngle = Math.PI/2; }
+    if (k.ArrowLeft || k.a) { p.x -= p.s; p.targetAngle = Math.PI; }
+    if (k.ArrowRight || k.d) { p.x += p.s; p.targetAngle = 0; }
 
-    if (k.ArrowUp || k.w) { p.y -= p.s; p.angle = -Math.PI/2; moving = true; }
-    if (k.ArrowDown || k.s) { p.y += p.s; p.angle = Math.PI/2; moving = true; }
-    if (k.ArrowLeft || k.a) { p.x -= p.s; p.angle = Math.PI; moving = true; }
-    if (k.ArrowRight || k.d) { p.x += p.s; p.angle = 0; moving = true; }
+    // interpolação angular (suave)
+    let diff = p.targetAngle - p.angle;
+    diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
+    p.angle += diff * 0.2;
 
     p.x = Math.max(0, Math.min(c.width - 30, p.x));
     p.y = Math.max(0, Math.min(c.height - 30, p.y));
@@ -165,7 +174,7 @@ function loop(){
         }
     }
 
-    // OUTROS
+    // OUTROS players (sem rotação ainda)
     if(older && newer){
         const t = (renderTime - older.time)/(newer.time - older.time);
 
@@ -180,31 +189,23 @@ function loop(){
             const ix = p1.x + (p2.x - p1.x)*t;
             const iy = p1.y + (p2.y - p1.y)*t;
 
-            const angle = p2.angle || 0;
-
-            drawRotated(ix, iy, angle, getCarSprite(id));
+            x.drawImage(getCarSprite(id), ix, iy);
         }
     }
 
-    // VOCÊ
-    drawRotated(p.x, p.y, p.angle, getCarSprite(PLAYER_ID));
+    // =====================
+    // SEU CARRO COM ROTAÇÃO
+    // =====================
+    x.save();
+    x.translate(p.x + 15, p.y + 15);
+    x.rotate(p.angle);
+    x.drawImage(getCarSprite(PLAYER_ID), -15, -15);
+    x.restore();
 
     requestAnimationFrame(loop);
 }
 
 loop();
-
-// =====================
-// ROTAÇÃO VISUAL
-// =====================
-
-function drawRotated(px, py, angle, sprite){
-    x.save();
-    x.translate(px + 15, py + 15);
-    x.rotate(angle);
-    x.drawImage(sprite, -15, -15);
-    x.restore();
-}
 </script>
 
 </body>
