@@ -9,18 +9,12 @@ const x = c.getContext("2d");
 
 let p = { x: 50, y: 50, s: 5 };
 let k = {};
-let alive = true;
 
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
 const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 
 let stateBuffer = [];
 const RENDER_DELAY = 50;
-
-let world = {
-    time: 0,
-    arena: 1000
-};
 
 // resize
 window.onresize = () => {
@@ -47,8 +41,6 @@ ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
     if (data.type === "state") {
-        world = data.world;
-
         stateBuffer.push({
             time: Date.now(),
             players: data.players
@@ -60,10 +52,9 @@ ws.onmessage = (event) => {
     }
 };
 
-// envio
+// envio de posição
 setInterval(() => {
     if (ws.readyState !== 1) return;
-    if (!alive) return;
 
     ws.send(JSON.stringify({
         type: "move",
@@ -73,62 +64,20 @@ setInterval(() => {
     }));
 }, 50);
 
-// loop
+// loop principal
 function loop() {
 
-    // movimento
-    if (alive) {
-        if (k.ArrowUp || k.w) p.y -= p.s;
-        if (k.ArrowDown || k.s) p.y += p.s;
-        if (k.ArrowLeft || k.a) p.x -= p.s;
-        if (k.ArrowRight || k.d) p.x += p.s;
-    }
+    // movimento LOCAL instantâneo
+    if (k.ArrowUp || k.w) p.y -= p.s;
+    if (k.ArrowDown || k.s) p.y += p.s;
+    if (k.ArrowLeft || k.a) p.x -= p.s;
+    if (k.ArrowRight || k.d) p.x += p.s;
 
     p.x = Math.max(0, Math.min(c.width - 30, p.x));
     p.y = Math.max(0, Math.min(c.height - 30, p.y));
 
     x.fillStyle = "#fff";
     x.fillRect(0, 0, c.width, c.height);
-
-    // =====================
-    // ARENA (CORRIGIDA)
-    // =====================
-
-    const arenaSize = Math.min(world.arena, Math.min(c.width, c.height) - 40);
-
-    const ax = (c.width - arenaSize) / 2;
-    const ay = (c.height - arenaSize) / 2;
-
-    // garante spawn dentro
-    if (!alive) {
-        p.x = c.width / 2;
-        p.y = c.height / 2;
-        alive = true;
-    }
-
-    x.fillStyle = "#f5f5f5";
-    x.fillRect(ax, ay, arenaSize, arenaSize);
-
-    x.strokeStyle = "#000";
-    x.lineWidth = 4;
-    x.strokeRect(ax, ay, arenaSize, arenaSize);
-
-    // =====================
-    // MORTE
-    // =====================
-
-    if (
-        p.x < ax ||
-        p.y < ay ||
-        p.x + 30 > ax + arenaSize ||
-        p.y + 30 > ay + arenaSize
-    ) {
-        alive = false;
-    }
-
-    // =====================
-    // OUTROS PLAYERS
-    // =====================
 
     const renderTime = Date.now() - RENDER_DELAY;
 
@@ -145,15 +94,18 @@ function loop() {
         }
     }
 
+    // desenha OUTROS jogadores (suavizado)
     if (older && newer) {
+
         const t = (renderTime - older.time) / (newer.time - older.time);
 
         for (let id in newer.players) {
 
-            if (id === PLAYER_ID) continue;
+            if (id === PLAYER_ID) continue; // ignora você
 
             const p1 = older.players[id];
             const p2 = newer.players[id];
+
             if (!p1 || !p2) continue;
 
             const ix = p1.x + (p2.x - p1.x) * t;
@@ -164,27 +116,24 @@ function loop() {
         }
     }
 
-    // você
-    if (alive) {
-        x.fillStyle = "#000";
-        x.fillRect(p.x, p.y, 30, 30);
-    } else {
-        x.fillStyle = "red";
-        x.font = "40px Arial";
-        x.textAlign = "center";
-        x.fillText("ELIMINADO", c.width / 2, c.height / 2);
+    // fallback
+    else if (stateBuffer.length > 0) {
+
+        const latest = stateBuffer[stateBuffer.length - 1];
+
+        for (let id in latest.players) {
+            if (id === PLAYER_ID) continue;
+
+            const pl = latest.players[id];
+
+            x.fillStyle = "#" + intToColor(id);
+            x.fillRect(pl.x, pl.y, 30, 30);
+        }
     }
 
-    // =====================
-    // TIMER
-    // =====================
-
-    const timeLeft = Math.max(0, 60 - Math.floor(world.time / 1000));
-
-    x.fillStyle = "#000";
-    x.font = "20px Arial";
-    x.textAlign = "center";
-    x.fillText("Tempo: " + timeLeft + "s", c.width / 2, 30);
+    // DESENHA VOCÊ (instantâneo, sem servidor)
+    x.fillStyle = "#000"; // destaque
+    x.fillRect(p.x, p.y, 30, 30);
 
     requestAnimationFrame(loop);
 }
