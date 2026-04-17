@@ -16,6 +16,8 @@ const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 let stateBuffer = [];
 const RENDER_DELAY = 50;
 
+let worldTime = 0;
+
 // resize
 window.onresize = () => {
     c.width = innerWidth;
@@ -41,6 +43,12 @@ ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
     if (data.type === "state") {
+
+        // 👇 NOVO: tempo global
+        if (data.world) {
+            worldTime = data.world.time;
+        }
+
         stateBuffer.push({
             time: Date.now(),
             players: data.players
@@ -67,7 +75,6 @@ setInterval(() => {
 // loop principal
 function loop() {
 
-    // movimento LOCAL instantâneo
     if (k.ArrowUp || k.w) p.y -= p.s;
     if (k.ArrowDown || k.s) p.y += p.s;
     if (k.ArrowLeft || k.a) p.x -= p.s;
@@ -94,14 +101,13 @@ function loop() {
         }
     }
 
-    // desenha OUTROS jogadores (suavizado)
     if (older && newer) {
 
         const t = (renderTime - older.time) / (newer.time - older.time);
 
         for (let id in newer.players) {
 
-            if (id === PLAYER_ID) continue; // ignora você
+            if (id === PLAYER_ID) continue;
 
             const p1 = older.players[id];
             const p2 = newer.players[id];
@@ -116,7 +122,6 @@ function loop() {
         }
     }
 
-    // fallback
     else if (stateBuffer.length > 0) {
 
         const latest = stateBuffer[stateBuffer.length - 1];
@@ -131,9 +136,20 @@ function loop() {
         }
     }
 
-    // DESENHA VOCÊ (instantâneo, sem servidor)
-    x.fillStyle = "#000"; // destaque
+    // você
+    x.fillStyle = "#000";
     x.fillRect(p.x, p.y, 30, 30);
+
+    // =====================
+    // TIMER GLOBAL (NOVO)
+    // =====================
+
+    const timeLeft = Math.max(0, 60 - Math.floor(worldTime / 1000));
+
+    x.fillStyle = "#000";
+    x.font = "20px Arial";
+    x.textAlign = "center";
+    x.fillText("Tempo: " + timeLeft + "s", c.width / 2, 30);
 
     requestAnimationFrame(loop);
 }
