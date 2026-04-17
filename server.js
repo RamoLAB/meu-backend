@@ -14,10 +14,10 @@ let players = {};
 
 const WORLD = {
     startTime: Date.now(),
-    duration: 60000, // 60s
-    arenaStart: 1000, // tamanho inicial
-    shrinkStep: 100,  // reduz a cada 10s
-    shrinkInterval: 10000 // 10s
+    duration: 60000,       // 60s
+    arenaStart: 1000,
+    shrinkStep: 100,
+    shrinkInterval: 10000
 };
 
 // =====================
@@ -34,11 +34,15 @@ app.get("/", (req, res) => {
 
 wss.on("connection", (ws) => {
 
+    let playerId = null;
+
     ws.on("message", (msg) => {
         const data = JSON.parse(msg);
 
         if (data.type === "join") {
-            players[data.id] = {
+            playerId = data.id;
+
+            players[playerId] = {
                 x: 50,
                 y: 50
             };
@@ -53,10 +57,8 @@ wss.on("connection", (ws) => {
     });
 
     ws.on("close", () => {
-        // limpa players desconectados
-        for (let id in players) {
-            // simples: remove todos sem controle fino
-            // (ajustamos depois se quiser)
+        if (playerId && players[playerId]) {
+            delete players[playerId];
         }
     });
 });
@@ -68,10 +70,16 @@ wss.on("connection", (ws) => {
 setInterval(() => {
 
     const now = Date.now();
-    const elapsed = now - WORLD.startTime;
+    let elapsed = now - WORLD.startTime;
 
-    // cálculo da arena
+    // reinicia o ciclo de 60s
+    if (elapsed >= WORLD.duration) {
+        WORLD.startTime = now;
+        elapsed = 0;
+    }
+
     const shrinkSteps = Math.floor(elapsed / WORLD.shrinkInterval);
+
     const arenaSize = Math.max(
         200,
         WORLD.arenaStart - shrinkSteps * WORLD.shrinkStep
@@ -101,6 +109,7 @@ setInterval(() => {
 // =====================
 
 const PORT = process.env.PORT || 10000;
+
 server.listen(PORT, () => {
     console.log("Servidor rodando na porta", PORT);
 });
