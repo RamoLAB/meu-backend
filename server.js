@@ -1,56 +1,71 @@
 const express = require('express');
+const http = require('http');
+const { WebSocketServer } = require('ws');
+
 const app = express();
+const server = http.createServer(app);
+const wss = new WebSocketServer({ server });
 
-app.use(express.json());
-
-// CORS
-app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type");
-    if (req.method === "OPTIONS") return res.sendStatus(200);
-    next();
+app.get("/", (req, res) => {
+    res.send("WebSocket server online");
 });
 
-// início do “mundo”
-const WORLD_START = Date.now();
-
+// estado do jogo
 const players = {};
 
-app.get('/world', (req, res) => {
-    res.json({
-        time: Date.now() - WORLD_START
+// quando alguém conecta
+wss.on('connection', (ws) => {
+
+    let id = null;
+
+    ws.on('message', (msg) => {
+        const data = JSON.parse(msg);
+
+        // registro inicial do jogador
+        if (data.type === "join") {
+            id = data.id;
+
+            players[id] = {
+                x: 50,
+                y: 50
+            };
+        }
+
+        // atualização de posição
+        if (data.type === "move") {
+            if (!players[id]) return;
+
+            players[id].x = data.x;
+            players[id].y = data.y;
+        }
+
+        // envia estado atualizado para todos
+        broadcast();
+    });
+
+    ws.on('close', () => {
+        if (id) {
+            delete players[id];
+            broadcast();
+        }
     });
 });
 
-app.get('/players', (req, res) => {
-    res.json(players);
-});
+function broadcast() {
+    const payload = JSON.stringify({
+        type: "state",
+        players
+    });
 
-app.post('/posicao', (req, res) => {
-    const { id, x, y } = req.body;
-    if (!id) return res.send("no id");
-
-    players[id] = {
-        x,
-        y,
-        last: Date.now()
-    };
-
-    res.send("ok");
-});
-
-// limpeza
-setInterval(() => {
-    const now = Date.now();
-    for (let id in players) {
-        if (now - players[id].last > 5000) {
-            delete players[id];
+    wss.clients.forEach(client => {
+        if (client.readyState === 1) {
+            client.send(payload);
         }
-    }
-}, 2000);
+    });
+}
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, '0.0.0.0', () => {
-    console.log("server on " + PORT);
+
+server.listen(PORT, () => {
+    console.log("WebSocket rodando na porta " + PORT);
 });
