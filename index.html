@@ -47,7 +47,6 @@ ws.onmessage = (event) => {
     const data = JSON.parse(event.data);
 
     if (data.type === "state") {
-
         world = data.world;
 
         stateBuffer.push({
@@ -61,7 +60,7 @@ ws.onmessage = (event) => {
     }
 };
 
-// envio de posição
+// envio
 setInterval(() => {
     if (ws.readyState !== 1) return;
     if (!alive) return;
@@ -77,6 +76,7 @@ setInterval(() => {
 // loop
 function loop() {
 
+    // movimento
     if (alive) {
         if (k.ArrowUp || k.w) p.y -= p.s;
         if (k.ArrowDown || k.s) p.y += p.s;
@@ -84,7 +84,6 @@ function loop() {
         if (k.ArrowRight || k.d) p.x += p.s;
     }
 
-    // limites tela
     p.x = Math.max(0, Math.min(c.width - 30, p.x));
     p.y = Math.max(0, Math.min(c.height - 30, p.y));
 
@@ -92,19 +91,24 @@ function loop() {
     x.fillRect(0, 0, c.width, c.height);
 
     // =====================
-    // ARENA (CENTRALIZADA)
+    // ARENA (CORRIGIDA)
     // =====================
 
-    const arenaSize = world.arena;
+    const arenaSize = Math.min(world.arena, Math.min(c.width, c.height) - 40);
 
     const ax = (c.width - arenaSize) / 2;
     const ay = (c.height - arenaSize) / 2;
 
-    // fundo arena
+    // garante spawn dentro
+    if (!alive) {
+        p.x = c.width / 2;
+        p.y = c.height / 2;
+        alive = true;
+    }
+
     x.fillStyle = "#f5f5f5";
     x.fillRect(ax, ay, arenaSize, arenaSize);
 
-    // borda
     x.strokeStyle = "#000";
     x.lineWidth = 4;
     x.strokeRect(ax, ay, arenaSize, arenaSize);
@@ -123,7 +127,7 @@ function loop() {
     }
 
     // =====================
-    // RENDER PLAYERS
+    // OUTROS PLAYERS
     // =====================
 
     const renderTime = Date.now() - RENDER_DELAY;
@@ -172,7 +176,7 @@ function loop() {
     }
 
     // =====================
-    // CRONÔMETRO GLOBAL
+    // TIMER
     // =====================
 
     const timeLeft = Math.max(0, 60 - Math.floor(world.time / 1000));
