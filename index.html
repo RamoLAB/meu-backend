@@ -40,6 +40,30 @@ const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 let stateBuffer = [];
 const RENDER_DELAY = 50;
 
+// =======================
+// COR CONSISTENTE GLOBAL
+// =======================
+function idToColor(id) {
+    let hash = 0;
+    for (let i = 0; i < id.length; i++) {
+        hash = id.charCodeAt(i) + ((hash << 5) - hash);
+    }
+
+    // gera cor forte (evita cinza)
+    let r = (hash >> 0) & 255;
+    let g = (hash >> 8) & 255;
+    let b = (hash >> 16) & 255;
+
+    // normaliza brilho mínimo
+    r = 100 + (r % 156);
+    g = 100 + (g % 156);
+    b = 100 + (b % 156);
+
+    return `rgb(${r},${g},${b})`;
+}
+
+const MY_COLOR = idToColor(PLAYER_ID);
+
 // resize
 onresize = () => {
     c.width = innerWidth;
@@ -98,7 +122,7 @@ setInterval(() => {
 // loop
 function loop() {
 
-    // DIREÇÃO (teclado)
+    // DIREÇÃO
     if (k["arrowleft"] || k["a"] || k["arrowup"] || k["w"]) {
         p.angle -= 0.05;
     }
@@ -107,13 +131,13 @@ function loop() {
         p.angle += 0.05;
     }
 
-    // ACELERAÇÃO
+    // ACELERA
     if (accelerating) {
         p.speed += 0.2;
         if (p.speed > 5) p.speed = 5;
     }
 
-    // FREIO
+    // FREIA
     if (braking) {
         p.speed *= 0.8;
         if (p.speed < 0.05) p.speed = 0;
@@ -124,7 +148,7 @@ function loop() {
         p.speed *= 0.98;
     }
 
-    // MOVIMENTO
+    // MOVE
     p.x += Math.cos(p.angle) * p.speed;
     p.y += Math.sin(p.angle) * p.speed;
 
@@ -151,6 +175,7 @@ function loop() {
         }
     }
 
+    // OUTROS PLAYERS
     if (older && newer) {
         const t = (renderTime - older.time) / (newer.time - older.time);
 
@@ -166,16 +191,16 @@ function loop() {
             const ix = p1.x + (p2.x - p1.x) * t;
             const iy = p1.y + (p2.y - p1.y) * t;
 
-            x.fillStyle = "#" + intToColor(id);
+            x.fillStyle = idToColor(id);
             x.fillRect(ix, iy, 30, 30);
         }
     }
 
-    // SEU CARRO (rotacionado)
+    // SEU CARRO
     x.save();
     x.translate(p.x, p.y);
     x.rotate(p.angle);
-    x.fillStyle = "#000";
+    x.fillStyle = MY_COLOR;
     x.fillRect(-15, -15, 30, 30);
     x.restore();
 
@@ -183,16 +208,6 @@ function loop() {
 }
 
 loop();
-
-// cor por id
-function intToColor(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    let color = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-    return "000000".substring(0, 6 - color.length) + color;
-}
 </script>
 
 </body>
