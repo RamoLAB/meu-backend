@@ -1,211 +1,181 @@
 <!DOCTYPE html>
 <html>
-<body style="margin:0; overflow:hidden; background:#ccc">
+<body style="margin:0; overflow:hidden; background:#111">
 <canvas id="g"></canvas>
 
+<!-- ================= HUD ================= -->
+<div id="hud">
+
+    <!-- SEMÁFORO -->
+    <div id="lights">
+        <div class="light red"></div>
+        <div class="light red"></div>
+        <div class="light red"></div>
+        <div class="light yellow"></div>
+        <div class="light green"></div>
+        <div class="label">LARGADA</div>
+    </div>
+
+    <!-- POSIÇÕES -->
+    <div id="positions">
+        <h3>Posições</h3>
+        <div>1 🥇</div>
+        <div>2 🥈</div>
+        <div>3 🥉</div>
+        <div>4</div>
+        <div>5</div>
+    </div>
+
+    <!-- PNEUS / BOOST -->
+    <div id="status">
+        <div class="bar">
+            <label>Pneus</label>
+            <div class="meter"><div id="tireBar"></div></div>
+        </div>
+
+        <div class="bar">
+            <label>Boost</label>
+            <div class="meter"><div id="boostBar"></div></div>
+        </div>
+    </div>
+
+    <!-- VOLTAS -->
+    <div id="laps">
+        4 / 5
+    </div>
+
+    <!-- PEDAIS -->
+    <div id="pedals">
+        <div class="pedal brake">FREIO</div>
+        <div class="pedal accel">ACELERADOR</div>
+    </div>
+
+</div>
+
+<style>
+/* HUD base */
+#hud {
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    color:white;
+    font-family:Arial;
+}
+
+/* SEMÁFORO */
+#lights {
+    position:absolute;
+    top:20px;
+    left:50%;
+    transform:translateX(-50%);
+    text-align:center;
+}
+.light {
+    width:18px;
+    height:18px;
+    border-radius:50%;
+    margin:4px auto;
+    background:#333;
+}
+.red { background:#900; }
+.yellow { background:#aa0; }
+.green { background:#0a0; }
+
+.label {
+    font-size:12px;
+    margin-top:4px;
+}
+
+/* POSIÇÕES */
+#positions {
+    position:absolute;
+    top:20px;
+    right:20px;
+    background:rgba(0,0,0,0.5);
+    padding:10px;
+    border-radius:8px;
+}
+
+/* STATUS */
+#status {
+    position:absolute;
+    bottom:20px;
+    right:20px;
+    width:180px;
+    background:rgba(0,0,0,0.5);
+    padding:10px;
+    border-radius:8px;
+}
+
+.bar {
+    margin-bottom:10px;
+}
+
+.meter {
+    width:100%;
+    height:10px;
+    background:#333;
+}
+
+#tireBar {
+    width:70%;
+    height:100%;
+    background:#0af;
+}
+
+#boostBar {
+    width:40%;
+    height:100%;
+    background:#ff0;
+}
+
+/* VOLTAS */
+#laps {
+    position:absolute;
+    top:20px;
+    left:20px;
+    font-size:18px;
+    background:rgba(0,0,0,0.5);
+    padding:8px;
+    border-radius:6px;
+}
+
+/* PEDAIS */
+#pedals {
+    position:absolute;
+    bottom:20px;
+    left:20px;
+    display:flex;
+    gap:10px;
+}
+
+.pedal {
+    width:100px;
+    height:120px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:rgba(0,0,0,0.6);
+    border-radius:8px;
+    font-size:12px;
+}
+
+.brake { border:2px solid #f00; }
+.accel { border:2px solid #0f0; }
+
+</style>
+
 <script>
-const c = g;
-const x = c.getContext("2d");
+// apenas placeholder visual (sem mecânica ainda)
 
-// =====================
-// PLAYER (COM ROTAÇÃO)
-// =====================
-let p = { x: 50, y: 50, s: 5, angle: 0, targetAngle: 0 };
-let k = {};
-
-const PLAYER_ID = Math.random().toString(36).substring(2, 10);
-const WS_URL = "wss://meu-backend-0rzt.onrender.com";
-
-let stateBuffer = [];
-const RENDER_DELAY = 50;
-
-// =====================
-// CARROS
-// =====================
-
-function drawBaseF1(ctx, bodyColor, wingColor, detailColor = '#fff') {
-    ctx.fillStyle = '#111';
-    ctx.fillRect(2, 4, 6, 8);
-    ctx.fillRect(22, 4, 6, 8);
-    ctx.fillRect(1, 20, 7, 9);
-    ctx.fillRect(22, 20, 7, 9);
-
-    ctx.fillStyle = '#444';
-    ctx.fillRect(8, 7, 14, 2);
-    ctx.fillRect(7, 24, 16, 2);
-
-    ctx.fillStyle = wingColor;
-    ctx.fillRect(4, 2, 22, 3);
-
-    ctx.fillStyle = bodyColor;
-    ctx.fillRect(11, 5, 8, 20);
-    ctx.fillRect(8, 16, 14, 6);
-
-    ctx.fillStyle = wingColor;
-    ctx.fillRect(5, 26, 20, 4);
-
-    ctx.fillStyle = detailColor;
-    ctx.fillRect(13, 14, 4, 4);
-}
-
-const CAR_MODELS = [
-    (ctx)=>drawBaseF1(ctx,'#d40000','#111'),
-    (ctx)=>drawBaseF1(ctx,'#c0c0c0','#00d2be'),
-    (ctx)=>drawBaseF1(ctx,'#0600ef','#fcd700'),
-    (ctx)=>drawBaseF1(ctx,'#111','#cfb53b'),
-    (ctx)=>drawBaseF1(ctx,'#004225','#fff'),
-    (ctx)=>drawBaseF1(ctx,'#ff8700','#004cff'),
-    (ctx)=>drawBaseF1(ctx,'#ffffff','#dd0000'),
-    (ctx)=>drawBaseF1(ctx,'#222','#111'),
-    (ctx)=>drawBaseF1(ctx,'#fff200','#000'),
-    (ctx)=>drawBaseF1(ctx,'#ff00ff','#4b0082'),
-    (ctx)=>drawBaseF1(ctx,'#0093cc','#000')
-];
-
-let carSprites = {};
-
-function getCarSprite(id){
-    if(carSprites[id]) return carSprites[id];
-
-    const canvas = document.createElement("canvas");
-    canvas.width = 30;
-    canvas.height = 30;
-    const ctx = canvas.getContext("2d");
-
-    const modelIndex = Math.abs(hash(id)) % CAR_MODELS.length;
-    CAR_MODELS[modelIndex](ctx);
-
-    carSprites[id] = canvas;
-    return canvas;
-}
-
-function hash(str){
-    let h = 0;
-    for(let i=0;i<str.length;i++){
-        h = str.charCodeAt(i) + ((h<<5)-h);
-    }
-    return h;
-}
-
-// =====================
-// RESIZE
-// =====================
-
-window.onresize = () => {
-    c.width = innerWidth;
-    c.height = innerHeight;
-};
-window.onresize();
-
-// =====================
-// INPUT
-// =====================
-
-onkeydown = e => k[e.key] = 1;
-onkeyup = e => k[e.key] = 0;
-
-// =====================
-// WEBSOCKET
-// =====================
-
-const ws = new WebSocket(WS_URL);
-
-ws.onopen = () => {
-    ws.send(JSON.stringify({ type:"join", id:PLAYER_ID }));
-};
-
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-
-    if (data.type === "state") {
-        stateBuffer.push({
-            time: Date.now(),
-            players: data.players
-        });
-
-        if (stateBuffer.length > 20) stateBuffer.shift();
-    }
-};
-
-// envio
+// simulação de barras animando
 setInterval(()=>{
-    if(ws.readyState !== 1) return;
+    document.getElementById("tireBar").style.width =
+        (50 + Math.random()*50) + "%";
 
-    ws.send(JSON.stringify({
-        type:"move",
-        id:PLAYER_ID,
-        x:p.x,
-        y:p.y
-    }));
-},50);
-
-// =====================
-// LOOP
-// =====================
-
-function loop(){
-
-    // movimento + direção
-    if (k.ArrowUp || k.w) { p.y -= p.s; p.targetAngle = -Math.PI/2; }
-    if (k.ArrowDown || k.s) { p.y += p.s; p.targetAngle = Math.PI/2; }
-    if (k.ArrowLeft || k.a) { p.x -= p.s; p.targetAngle = Math.PI; }
-    if (k.ArrowRight || k.d) { p.x += p.s; p.targetAngle = 0; }
-
-    // interpolação angular (suave)
-    let diff = p.targetAngle - p.angle;
-    diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
-    p.angle += diff * 0.2;
-
-    p.x = Math.max(0, Math.min(c.width - 30, p.x));
-    p.y = Math.max(0, Math.min(c.height - 30, p.y));
-
-    x.fillStyle = "#ccc";
-    x.fillRect(0, 0, c.width, c.height);
-
-    const renderTime = Date.now() - RENDER_DELAY;
-
-    let older, newer;
-
-    for(let i=0;i<stateBuffer.length-1;i++){
-        if(stateBuffer[i].time <= renderTime && stateBuffer[i+1].time >= renderTime){
-            older = stateBuffer[i];
-            newer = stateBuffer[i+1];
-            break;
-        }
-    }
-
-    // OUTROS players (sem rotação ainda)
-    if(older && newer){
-        const t = (renderTime - older.time)/(newer.time - older.time);
-
-        for(let id in newer.players){
-
-            if(id === PLAYER_ID) continue;
-
-            const p1 = older.players[id];
-            const p2 = newer.players[id];
-            if(!p1 || !p2) continue;
-
-            const ix = p1.x + (p2.x - p1.x)*t;
-            const iy = p1.y + (p2.y - p1.y)*t;
-
-            x.drawImage(getCarSprite(id), ix, iy);
-        }
-    }
-
-    // =====================
-    // SEU CARRO COM ROTAÇÃO
-    // =====================
-    x.save();
-    x.translate(p.x + 15, p.y + 15);
-    x.rotate(p.angle);
-    x.drawImage(getCarSprite(PLAYER_ID), -15, -15);
-    x.restore();
-
-    requestAnimationFrame(loop);
-}
-
-loop();
+    document.getElementById("boostBar").style.width =
+        (Math.random()*100) + "%";
+}, 500);
 </script>
 
 </body>
