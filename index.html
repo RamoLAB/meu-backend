@@ -13,10 +13,7 @@ let k = {};
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
 const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 
-// buffer de estados
 let stateBuffer = [];
-
-// atraso reduzido (mais responsivo)
 const RENDER_DELAY = 50;
 
 // resize
@@ -55,7 +52,7 @@ ws.onmessage = (event) => {
     }
 };
 
-// envio de movimento
+// envio de posição
 setInterval(() => {
     if (ws.readyState !== 1) return;
 
@@ -70,7 +67,7 @@ setInterval(() => {
 // loop principal
 function loop() {
 
-    // movimento local (instantâneo)
+    // movimento LOCAL instantâneo
     if (k.ArrowUp || k.w) p.y -= p.s;
     if (k.ArrowDown || k.s) p.y += p.s;
     if (k.ArrowLeft || k.a) p.x -= p.s;
@@ -97,12 +94,14 @@ function loop() {
         }
     }
 
-    // interpolação principal
+    // desenha OUTROS jogadores (suavizado)
     if (older && newer) {
 
         const t = (renderTime - older.time) / (newer.time - older.time);
 
         for (let id in newer.players) {
+
+            if (id === PLAYER_ID) continue; // ignora você
 
             const p1 = older.players[id];
             const p2 = newer.players[id];
@@ -117,18 +116,24 @@ function loop() {
         }
     }
 
-    // fallback (evita travamento visual)
+    // fallback
     else if (stateBuffer.length > 0) {
 
         const latest = stateBuffer[stateBuffer.length - 1];
 
         for (let id in latest.players) {
+            if (id === PLAYER_ID) continue;
+
             const pl = latest.players[id];
 
             x.fillStyle = "#" + intToColor(id);
             x.fillRect(pl.x, pl.y, 30, 30);
         }
     }
+
+    // DESENHA VOCÊ (instantâneo, sem servidor)
+    x.fillStyle = "#000"; // destaque
+    x.fillRect(p.x, p.y, 30, 30);
 
     requestAnimationFrame(loop);
 }
