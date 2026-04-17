@@ -1,11 +1,36 @@
 <!DOCTYPE html>
 <html>
+<head>
+    <meta charset="UTF-8">
+</head>
 <body style="margin:0; overflow:hidden; background:#fff">
 
 <canvas id="g"></canvas>
 
-<div style="position:fixed; top:10px; right:10px; font-family:sans-serif;">
+<div style="position:fixed; top:10px; right:10px; font-family:sans-serif; background:rgba(255,255,255,0.8); padding:5px; border-radius:5px;">
     Volta: <span id="lap">1</span>/5
+</div>
+
+<div style="position:fixed; top:10px; left:50%; transform:translateX(-50%); font-family:sans-serif; text-align:center;">
+    <div style="font-size:12px; color:#666;">ARENA: <span id="arenaSize">1000</span></div>
+    <div id="timer" style="font-weight:bold; font-size:18px;">60s</div>
+</div>
+
+<div style="position:fixed; bottom:20px; right:20px; display:flex; gap:12px; align-items: flex-end; user-select:none;">
+    <div style="display:flex; flex-direction:column; gap:12px;">
+        <div style="width:80px; height:15px; border:2px solid #00adef; position:relative; box-sizing: border-box;">
+            <div id="tyreBar" style="width:100%; height:100%; background:#00adef;"></div>
+        </div>
+        <div id="brake" style="width:80px;height:80px;border:1px solid #ccc;border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:sans-serif;background:#eee;">FREIO</div>
+    </div>
+    
+    <div style="display:flex; flex-direction:column; gap:12px;">
+        <div id="boostBtn" style="width:80px;height:80px;border:2px solid red;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;cursor:pointer;background:#fff;">BOOST</div>
+        <div style="width:80px; height:15px; border:2px solid red; position:relative; box-sizing: border-box;">
+            <div id="boostBar" style="width:0%; height:100%; background:red;"></div>
+        </div>
+        <div id="gas" style="width:80px;height:80px;border:1px solid #ccc;border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:sans-serif;background:#eee;">ACEL.</div>
+    </div>
 </div>
 
 <script>
@@ -13,205 +38,184 @@ const c = g;
 const x = c.getContext("2d");
 
 // ==========================
-// CONFIG
+// CONFIG & NETWORK 🌐
 // ==========================
 const PLAYER_ID = Math.random().toString(36).slice(2,9);
 const PLAYER_COLOR = "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0");
-const WS_URL = "wss://meu-backend-0rzt.onrender.com";
+const WS_URL = "ws://localhost:10000"; // Mude para sua URL do Render quando necessário
 
-// ==========================
-// TRACK
-// ==========================
-const track = {};
-
-// ==========================
-// PLAYER LOCAL
-// ==========================
-let p = {
-    x: 0,
-    y: 0,
-    angle: Math.PI,
-    speed: 0,
-    lap: 1,
-    stage: 0,
-    lastCross: false,
-    boost: 0,
-    tyre: 100,
-    isBoosting: false
-};
-
-// OUTROS JOGADORES
-let players = {};
-
-// ==========================
-// INPUT
-// ==========================
-let k = {};
-onkeydown = e => k[e.key.toLowerCase()] = 1;
-onkeyup = e => k[e.key.toLowerCase()] = 0;
-
-// ==========================
-// RESIZE
-// ==========================
-onresize = () => {
-    c.width = innerWidth;
-    c.height = innerHeight;
-
-    track.w = c.width;
-    track.h = c.height;
-
-    track.innerW = track.w * 0.6;
-    track.innerH = track.h * 0.5;
-    track.innerX = (track.w - track.innerW)/2;
-    track.innerY = (track.h - track.innerH)/2;
-
-    p.x = track.w / 2;
-    p.y = track.innerY / 2;
-};
-onresize();
-
-// ==========================
-// WEBSOCKET
-// ==========================
 const ws = new WebSocket(WS_URL);
+let players = {};
+let serverWorld = { time: 0, arena: 1000 };
 
 ws.onopen = () => {
-    ws.send(JSON.stringify({
-        type: "join",
-        id: PLAYER_ID,
-        color: PLAYER_COLOR
-    }));
+    ws.send(JSON.stringify({ type: "join", id: PLAYER_ID, color: PLAYER_COLOR }));
 };
 
 ws.onmessage = (msg) => {
     const data = JSON.parse(msg.data);
-
-    if(data.type === "state"){
+    if(data.type === "state") {
         players = data.players;
+        serverWorld = data.world;
+        // Atualiza HUD do servidor
+        document.getElementById("arenaSize").innerText = Math.floor(serverWorld.arena);
+        document.getElementById("timer").innerText = Math.ceil((60000 - serverWorld.time) / 1000) + "s";
     }
 };
 
-// envio
-setInterval(()=>{
-    if(ws.readyState !== 1) return;
-
-    ws.send(JSON.stringify({
-        type:"move",
-        id: PLAYER_ID,
-        x: p.x,
-        y: p.y,
-        angle: p.angle,
-        color: PLAYER_COLOR,
-        lap: p.lap
-    }));
-},50);
+// Envia dados para o servidor a cada 50ms
+setInterval(() => {
+    if(ws.readyState === 1) {
+        ws.send(JSON.stringify({
+            type: "move",
+            id: PLAYER_ID,
+            x: p.x,
+            y: p.y,
+            angle: p.angle,
+            color: PLAYER_COLOR
+        }));
+    }
+}, 50);
 
 // ==========================
-// LOOP
+// LÓGICA DO JOGO 🏎️
 // ==========================
+const track = { w: 0, h: 0, innerX: 0, innerY: 0, innerW: 0, innerH: 0, pitW: 100, pitY: 0, pitH: 0 };
+
+let p = {
+    x: 0, y: 0, angle: Math.PI, speed: 0, lap: 1,
+    lastCross: false, stage: 0, boost: 0, isBoosting: false, tyre: 100
+};
+
+let k = {}, accelerating = false, braking = false;
+
+onresize = () => {
+    c.width = innerWidth; c.height = innerHeight;
+    track.w = c.width; track.h = c.height;
+    track.innerW = track.w * 0.6; track.innerH = track.h * 0.5;
+    track.innerX = (track.w - track.innerW) / 2;
+    track.innerY = (track.h - track.innerH) / 2;
+    track.pitH = track.h * 0.4; track.pitY = (track.h - track.pitH) / 2;
+    p.x = track.w / 2; p.y = track.innerY / 2;
+};
+onresize();
+
+onkeydown = e => k[e.key.toLowerCase()] = 1;
+onkeyup = e => k[e.key.toLowerCase()] = 0;
+
+gas.onmousedown = gas.ontouchstart = () => accelerating = true;
+gas.onmouseup = gas.onmouseleave = gas.ontouchend = () => accelerating = false;
+brake.onmousedown = brake.ontouchstart = () => braking = true;
+brake.onmouseup = brake.onmouseleave = brake.ontouchend = () => braking = false;
+boostBtn.onmousedown = boostBtn.ontouchstart = () => { if(p.boost > 0 && p.tyre > 0) p.isBoosting = true; };
+boostBtn.onmouseup = boostBtn.ontouchend = () => p.isBoosting = false;
+
 function loop(){
-
-    // direção
+    // Direção
     if(k["arrowleft"]||k["a"]) p.angle -= 0.05;
     if(k["arrowright"]||k["d"]) p.angle += 0.05;
 
-    let accel = k["arrowup"]||k["w"];
-    let brake = k["arrowdown"]||k["s"];
+    let accelInput = accelerating || k["arrowup"] || k["w"];
+    let inPit = (p.x < track.pitW && p.y > track.pitY && p.y < track.pitY + track.pitH);
 
-    if(accel){
-        p.speed += 0.3;
-        if(p.speed > 8) p.speed = 8;
+    if(inPit) p.tyre = Math.min(100, p.tyre + 0.5);
+
+    let perf = p.tyre <= 25 ? 0.7 : 1;
+
+    if(accelInput){
+        p.speed += 0.35 * perf;
+        if(!p.isBoosting) p.boost = Math.min(100, p.boost + 0.1);
+        p.tyre = Math.max(0, p.tyre - 0.06);
+        if(p.speed > 8 * perf) p.speed = 8 * perf;
     }
 
-    if(brake){
+    if(p.isBoosting && p.boost > 0 && p.tyre > 0){
+        p.speed += 0.6 * perf;
+        p.boost -= 0.5;
+        p.tyre = Math.max(0, p.tyre - 0.15);
+        if(p.speed > 14 * perf) p.speed = 14 * perf;
+        if(p.boost <= 0) { p.boost = 0; p.isBoosting = false; }
+    }
+
+    if(braking || k["arrowdown"] || k["s"]){
         p.speed *= 0.85;
     }
 
-    if(!accel && !brake){
-        p.speed *= 0.99;
+    if(!accelInput && !p.isBoosting && !braking && !k["arrowdown"] && !k["s"]){
+        p.speed *= 0.992;
     }
 
-    // movimento
-    let nx = p.x + Math.cos(p.angle)*p.speed;
-    let ny = p.y + Math.sin(p.angle)*p.speed;
+    boostBar.style.width = p.boost + "%";
+    tyreBar.style.width = p.tyre + "%";
 
-    let hit =
-        nx < 10 || nx > track.w-10 ||
-        ny < 10 || ny > track.h-10 ||
-        (nx>track.innerX && nx<track.innerX+track.innerW &&
-         ny>track.innerY && ny<track.innerY+track.innerH);
+    let nx = p.x + Math.cos(p.angle) * p.speed;
+    let ny = p.y + Math.sin(p.angle) * p.speed;
 
-    if(!hit){
-        p.x = nx;
-        p.y = ny;
-    } else {
-        p.speed *= -0.3;
+    let border = 15;
+    let hit = (nx < border || nx > track.w - border || ny < border || ny > track.h - border) ||
+              (nx > track.innerX && nx < track.innerX + track.innerW && ny > track.innerY && ny < track.innerY + track.innerH);
+
+    if(!hit){ p.x = nx; p.y = ny; } else { p.speed *= -0.3; }
+
+    // Lap System
+    if(p.stage == 0 && p.x < track.innerX) p.stage = 1;
+    if(p.stage == 1 && p.y > track.innerY + track.innerH) p.stage = 2;
+    if(p.stage == 2 && p.x > track.innerX + track.innerW) p.stage = 3;
+    let crossing = (p.stage == 3 && p.x < track.w / 2 && p.y < track.innerY);
+    if(crossing && !p.lastCross){
+        if(p.lap < 5){ p.lap++; document.getElementById("lap").innerText = p.lap; p.stage = 0; }
     }
+    p.lastCross = crossing;
 
-    // LAP SYSTEM
-    if(p.stage==0 && p.x < track.innerX) p.stage=1;
-    if(p.stage==1 && p.y > track.innerY+track.innerH) p.stage=2;
-    if(p.stage==2 && p.x > track.innerX+track.innerW) p.stage=3;
+    // DESENHO 🎨
+    x.clearRect(0, 0, c.width, c.height);
 
-    let cross = (p.stage==3 && p.x < track.w/2 && p.y < track.innerY);
-    if(cross && !p.lastCross){
-        if(p.lap < 5){
-            p.lap++;
-            lap.innerText = p.lap;
-            p.stage = 0;
-        }
-    }
-    p.lastCross = cross;
+    // Pit Stop area
+    x.fillStyle = "#e0f7ff";
+    x.fillRect(0, track.pitY, track.pitW, track.pitH);
+    
+    // Pista
+    x.strokeStyle = "#000";
+    x.lineWidth = 5;
+    x.strokeRect(0, 0, track.w, track.h);
+    x.lineWidth = 2;
+    x.strokeRect(track.innerX, track.innerY, track.innerW, track.innerH);
 
-    // ======================
-    // DRAW
-    // ======================
-    x.fillStyle="#fff";
-    x.fillRect(0,0,c.width,c.height);
-
-    // pista
-    x.strokeStyle="#000";
-    x.lineWidth=5;
-    x.strokeRect(0,0,track.w,track.h);
-
-    x.lineWidth=2;
-    x.strokeRect(track.innerX,track.innerY,track.innerW,track.innerH);
-
-    // linha chegada
+    // Linha de Chegada
     x.beginPath();
-    x.moveTo(track.w/2,0);
-    x.lineTo(track.w/2,track.innerY);
+    x.moveTo(track.w / 2, 0);
+    x.lineTo(track.w / 2, track.innerY);
     x.stroke();
 
-    // OUTROS
+    // OUTROS JOGADORES
     for(let id in players){
         if(id === PLAYER_ID) continue;
-
-        let pl = players[id];
-
+        let o = players[id];
         x.save();
-        x.translate(pl.x, pl.y);
-        x.rotate(pl.angle || 0);
-
-        x.fillStyle = pl.color || "#999";
-        x.fillRect(-15,-15,30,30);
-
+        x.translate(o.x, o.y);
+        x.rotate(o.angle || 0);
+        x.fillStyle = o.color || "#ccc";
+        // Sombra leve
+        x.shadowBlur = 5; x.shadowColor = "rgba(0,0,0,0.3)";
+        x.fillRect(-15, -15, 30, 30);
         x.restore();
     }
 
     // VOCÊ
     x.save();
-    x.translate(p.x,p.y);
+    x.translate(p.x, p.y);
     x.rotate(p.angle);
-    x.fillStyle = PLAYER_COLOR;
-    x.fillRect(-15,-15,30,30);
+    x.shadowBlur = 8; x.shadowColor = "rgba(0,0,0,0.4)";
+    x.fillStyle = "#333";
+    x.fillRect(-15, -15, 30, 30);
+    x.strokeStyle = p.isBoosting ? "red" : PLAYER_COLOR;
+    x.lineWidth = 3;
+    x.strokeRect(-15, -15, 30, 30);
     x.restore();
 
     requestAnimationFrame(loop);
 }
-
 loop();
 </script>
-
 </body>
 </html>
