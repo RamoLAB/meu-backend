@@ -7,12 +7,16 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve o index.html automaticamente
-app.use(express.static(__dirname));
+// Serve arquivos estáticos da pasta raiz
+app.use(express.static(path.join(__dirname, ".")));
+
+// ROTA EXPLÍCITA: Se alguém acessar o site, envia o index.html
+app.get("/", (req, res) => {
+    res.sendFile(path.join(__dirname, "index.html"));
+});
 
 let players = {};
 
-// Configuração da Arena (vinda do seu pedido anterior)
 const WORLD = {
     startTime: Date.now(),
     duration: 60000,
@@ -23,13 +27,12 @@ const WORLD = {
 
 wss.on("connection", (ws) => {
     let playerId = null;
-
     ws.on("message", (msg) => {
         try {
             const data = JSON.parse(msg);
             if (data.type === "join") {
                 playerId = data.id;
-                players[playerId] = { x: 500, y: 100, angle: 0, color: data.color };
+                players[playerId] = { x: 300, y: 300, angle: 0, color: data.color };
             }
             if (data.type === "move" && players[data.id]) {
                 players[data.id].x = data.x;
@@ -38,18 +41,13 @@ wss.on("connection", (ws) => {
             }
         } catch (e) {}
     });
-
-    ws.on("close", () => {
-        if (playerId) delete players[playerId];
-    });
+    ws.on("close", () => { if (playerId) delete players[playerId]; });
 });
 
-// Loop Global: Envia dados e calcula Arena
 setInterval(() => {
     const now = Date.now();
     let elapsed = now - WORLD.startTime;
     if (elapsed >= WORLD.duration) { WORLD.startTime = now; elapsed = 0; }
-
     const shrinkSteps = Math.floor(elapsed / WORLD.shrinkInterval);
     const arenaSize = Math.max(200, WORLD.arenaStart - shrinkSteps * WORLD.shrinkStep);
 
@@ -58,11 +56,8 @@ setInterval(() => {
         players, 
         world: { time: elapsed, arena: arenaSize } 
     });
-
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) client.send(payload);
-    });
+    wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(payload); });
 }, 50);
 
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`Servidor ON na porta ${PORT}`));
+server.listen(PORT, () => console.log("Servidor Online"));
