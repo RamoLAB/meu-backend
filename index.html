@@ -1,25 +1,36 @@
 <!DOCTYPE html>
 <html>
 <body style="margin:0; overflow:hidden; background:#fff">
+
 <canvas id="g"></canvas>
-<div style="position:fixed; top:10px; left:50%; transform:translateX(-50%); font-family:sans-serif; text-align:center; pointer-events:none;">
+
+<div style="position:fixed; top:10px; left:50%; transform:translateX(-50%); font-family:sans-serif; text-align:center; pointer-events:none; background:rgba(255,255,255,0.7); padding:10px; border-radius:10px;">
     <div style="font-size:12px; color:#666;">ARENA: <span id="arenaSize">1000</span></div>
     <div id="timer" style="font-weight:bold; font-size:18px;">60s</div>
 </div>
+
 <script>
 const c = g; const x = c.getContext("2d");
+
+// ==========================
+// CONFIGURAÇÃO DA REDE 🌐
+// ==========================
 const PLAYER_ID = Math.random().toString(36).slice(2,9);
 const PLAYER_COLOR = "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0");
 
-// CONEXÃO DINÂMICA (Funciona no PC e no Render)
-const protocol = location.protocol === 'https:' ? 'wss://' : 'ws://';
-const WS_URL = protocol + location.host; 
-let ws = new WebSocket(WS_URL);
+// AQUI ESTÁ O SEGREDO: Conecta no seu Render, não no GitHub
+const WS_URL = "wss://meu-backend-0rzt.onrender.com"; 
 
+let ws = new WebSocket(WS_URL);
 let players = {};
 let serverWorld = { time: 0, arena: 1000 };
-let p = { x: 500, y: 100, angle: 0, speed: 0 };
+let p = { x: 300, y: 300, angle: 0, speed: 0 };
 let k = {};
+
+ws.onopen = () => {
+    console.log("Conectado ao servidor!");
+    ws.send(JSON.stringify({ type: "join", id: PLAYER_ID, color: PLAYER_COLOR }));
+};
 
 ws.onmessage = (msg) => {
     const data = JSON.parse(msg.data);
@@ -31,18 +42,25 @@ ws.onmessage = (msg) => {
     }
 };
 
-ws.onopen = () => ws.send(JSON.stringify({ type: "join", id: PLAYER_ID, color: PLAYER_COLOR }));
+ws.onerror = (err) => console.error("Erro no WebSocket:", err);
 
+// Envia posição a cada 50ms
 setInterval(() => {
-    if(ws.readyState === 1) ws.send(JSON.stringify({ type: "move", id: PLAYER_ID, x: p.x, y: p.y, angle: p.angle }));
+    if(ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: "move", id: PLAYER_ID, x: p.x, y: p.y, angle: p.angle }));
+    }
 }, 50);
 
+// ==========================
+// CONTROLES E LOOP 🕹️
+// ==========================
 onkeydown = e => k[e.key.toLowerCase()] = 1;
 onkeyup = e => k[e.key.toLowerCase()] = 0;
 onresize = () => { c.width = innerWidth; c.height = innerHeight; };
 onresize();
 
 function loop(){
+    // Movimentação
     if(k["a"] || k["arrowleft"]) p.angle -= 0.05;
     if(k["d"] || k["arrowright"]) p.angle += 0.05;
     if(k["w"] || k["arrowup"]) p.speed = Math.min(p.speed + 0.2, 5);
@@ -51,23 +69,34 @@ function loop(){
     p.x += Math.cos(p.angle) * p.speed;
     p.y += Math.sin(p.angle) * p.speed;
 
+    // Limpa a tela
     x.clearRect(0,0,c.width,c.height);
 
+    // Desenha todos os jogadores
     for(let id in players) {
         let o = players[id];
         x.save();
         x.translate(o.x, o.y);
-        x.rotate(o.angle);
+        x.rotate(o.angle || 0);
+        
+        // Sombra leve
+        x.shadowBlur = 5; 
+        x.shadowColor = "rgba(0,0,0,0.3)";
+        
+        // Cor do jogador
         x.fillStyle = (id === PLAYER_ID) ? "#333" : (o.color || "#ccc");
-        x.shadowBlur = 5; x.shadowColor = "rgba(0,0,0,0.3)";
-        x.fillRect(-15,-15,30,30);
+        x.fillRect(-15, -15, 30, 30);
+        
+        // Se for você, desenha contorno da cor escolhida
         if(id === PLAYER_ID) {
             x.strokeStyle = PLAYER_COLOR;
             x.lineWidth = 3;
-            x.strokeRect(-15,-15,30,30);
+            x.strokeRect(-15, -15, 30, 30);
         }
+        
         x.restore();
     }
+
     requestAnimationFrame(loop);
 }
 loop();
