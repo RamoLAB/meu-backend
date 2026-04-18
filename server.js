@@ -1,42 +1,60 @@
 const WebSocket = require("ws");
 
-const wss = new WebSocket.Server({ port: 3000 });
+const PORT = process.env.PORT || 10000;
+const wss = new WebSocket.Server({ port: PORT });
 
 let players = {};
 
 wss.on("connection", (ws) => {
 
-    const id = Math.random().toString(36).substr(2, 9);
-
-    players[id] = {};
-
-    ws.send(JSON.stringify({ type:"init", id }));
+    let playerId = null;
 
     ws.on("message", (msg) => {
-        try{
+        try {
             const data = JSON.parse(msg);
 
-            if(data.type==="update"){
-                players[id] = data.player;
+            // jogador entra
+            if (data.type === "join") {
+                playerId = data.id;
+
+                players[playerId] = {
+                    x: 100,
+                    y: 100,
+                    color: `hsl(${Math.random() * 360},70%,50%)`
+                };
             }
-        }catch{}
+
+            // movimento
+            if (data.type === "move" && playerId) {
+                players[playerId] = {
+                    x: data.x,
+                    y: data.y,
+                    color: data.color || players[playerId]?.color
+                };
+            }
+
+        } catch (e) {}
     });
 
-    ws.on("close", ()=>{
-        delete players[id];
+    ws.on("close", () => {
+        if (playerId) delete players[playerId];
     });
 });
 
-setInterval(()=>{
+// broadcast (20x por segundo)
+setInterval(() => {
+
     const payload = JSON.stringify({
-        type:"state",
-        players
+        type: "state",
+        players: players
     });
 
-    wss.clients.forEach(c=>{
-        if(c.readyState===1) c.send(payload);
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(payload);
+        }
     });
 
-},50);
+}, 50);
 
-console.log("rodando na 3000");
+console.log("Servidor rodando na porta", PORT);
