@@ -1,18 +1,19 @@
 <!DOCTYPE html>
 <html>
-<body style="margin:0; overflow:hidden; background:#fff">
+<body style="margin:0; overflow:hidden; background:#ddd">
 
 <canvas id="g"></canvas>
 
 <div style="position:fixed; bottom:20px; right:20px; display:flex; gap:10px;">
-    <div id="brake" style="width:80px;height:80px;border:1px solid #ccc;border-radius:10px;display:flex;align-items:center;justify-content:center;">FREIO</div>
-    <div id="gas" style="width:80px;height:80px;border:1px solid #ccc;border-radius:10px;display:flex;align-items:center;justify-content:center;">ACEL.</div>
+    <div id="brake" style="width:80px;height:80px;border:1px solid rgba(200,200,200,0.5);border-radius:10px;display:flex;align-items:center;justify-content:center;">FREIO</div>
+    <div id="gas" style="width:80px;height:80px;border:1px solid rgba(200,200,200,0.5);border-radius:10px;display:flex;align-items:center;justify-content:center;">ACEL.</div>
 </div>
 
 <script>
 const c = g;
 const x = c.getContext("2d");
 
+// IMPORTANTE: mantenha assim
 const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
@@ -22,16 +23,16 @@ let k = {};
 let accelerating = false;
 let braking = false;
 
-// ================= PLAYER =================
+// PLAYER
 let p = {
-    x: 200,
+    x: 300,
     y: 200,
     angle: 0,
     speed: 0,
     color: `hsl(${Math.random()*360},70%,50%)`
 };
 
-// ================= INPUT =================
+// INPUT
 onkeydown = e => k[e.key.toLowerCase()] = 1;
 onkeyup = e => k[e.key.toLowerCase()] = 0;
 
@@ -43,21 +44,35 @@ brake.onmousedown = () => braking = true;
 brake.onmouseup = () => braking = false;
 brake.onmouseleave = () => braking = false;
 
-// ================= WS =================
-const ws = new WebSocket(WS_URL);
+// WS COM AUTO-RECONNECT
+let ws;
 
-ws.onopen = () => {
-    ws.send(JSON.stringify({ type:"join", id:PLAYER_ID }));
-};
+function connect(){
+    ws = new WebSocket(WS_URL);
 
-ws.onmessage = (e)=>{
-    const data = JSON.parse(e.data);
-    if(data.type==="state"){
-        others = data.players;
-    }
-};
+    ws.onopen = () => {
+        ws.send(JSON.stringify({
+            type:"join",
+            id:PLAYER_ID,
+            color:p.color
+        }));
+    };
 
-// envio compatível
+    ws.onmessage = (e)=>{
+        const data = JSON.parse(e.data);
+        if(data.type==="state"){
+            others = data.players;
+        }
+    };
+
+    ws.onclose = () => {
+        setTimeout(connect, 1000); // reconnect automático
+    };
+}
+
+connect();
+
+// envio contínuo
 setInterval(()=>{
     if(ws.readyState!==1) return;
 
@@ -65,51 +80,48 @@ setInterval(()=>{
         type:"move",
         id:PLAYER_ID,
         x:p.x,
-        y:p.y,
-        color:p.color
+        y:p.y
     }));
 },50);
 
-// ================= LOOP =================
+// LOOP
 function loop(){
 
-    // direção
     if(k["arrowleft"]||k["a"]) p.angle -= 0.05;
     if(k["arrowright"]||k["d"]) p.angle += 0.05;
 
-    // aceleração SOMENTE pedal
     if(accelerating){
         p.speed += 0.3;
         if(p.speed > 6) p.speed = 6;
     }
 
-    // freio
     if(braking){
         p.speed *= 0.8;
         if(p.speed < 0.05) p.speed = 0;
     }
 
-    // atrito
     p.speed *= 0.98;
 
-    // movimento
     p.x += Math.cos(p.angle) * p.speed;
     p.y += Math.sin(p.angle) * p.speed;
 
-    // ================= DRAW =================
+    // DRAW
     x.fillStyle = "#ddd";
     x.fillRect(0,0,c.width,c.height);
 
-    // outros players
+    // OUTROS
     for(let id in others){
         if(id === PLAYER_ID) continue;
         let o = others[id];
 
-        x.fillStyle = o.color || "#999";
-        x.fillRect(o.x, o.y, 30, 30);
+        x.save();
+        x.translate(o.x, o.y);
+        x.fillStyle = o.color || "#888";
+        x.fillRect(-15,-15,30,30);
+        x.restore();
     }
 
-    // você
+    // VOCÊ
     x.save();
     x.translate(p.x, p.y);
     x.rotate(p.angle);
