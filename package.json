@@ -1,5 +1,5 @@
 {
-  "name": "racing-backend",
+  "name": "racing-server",
   "version": "1.0.0",
   "main": "server.js",
   "dependencies": {
