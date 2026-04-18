@@ -1,95 +1,53 @@
 const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
+const path = require("path");
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// Serve o arquivo index.html automaticamente
+// Serve o index.html e arquivos da pasta atual
 app.use(express.static(__dirname));
 
-// =====================
-// ESTADO GLOBAL 🌍
-// =====================
 let players = {};
 
-const WORLD = {
-    startTime: Date.now(),
-    duration: 60000,       // Ciclo de 60 segundos
-    arenaStart: 1000,
-    shrinkStep: 100,
-    shrinkInterval: 10000
-};
-
-// =====================
-// WEBSOCKET (Conexão) 🔌
-// =====================
 wss.on("connection", (ws) => {
     let playerId = null;
 
     ws.on("message", (msg) => {
-        const data = JSON.parse(msg);
+        try {
+            const data = JSON.parse(msg);
 
-        if (data.type === "join") {
-            playerId = data.id;
-            players[playerId] = {
-                x: 500,
-                y: 100,
-                angle: 0,
-                color: data.color || "#4CAF50"
-            };
-        }
+            if (data.type === "join") {
+                playerId = data.id;
+                players[playerId] = { x: 500, y: 100, angle: 0, color: data.color };
+                console.log(`Jogador ${playerId} entrou`);
+            }
 
-        if (data.type === "move") {
-            if (players[data.id]) {
+            if (data.type === "move" && players[data.id]) {
                 players[data.id].x = data.x;
                 players[data.id].y = data.y;
                 players[data.id].angle = data.angle;
-                players[data.id].color = data.color;
             }
-        }
+        } catch (e) { console.error("Erro no processamento:", e); }
     });
 
     ws.on("close", () => {
-        if (playerId && players[playerId]) {
+        if (playerId) {
             delete players[playerId];
+            console.log(`Jogador ${playerId} saiu`);
         }
     });
 });
 
-// =====================
-// LOOP DE ATUALIZAÇÃO 🔄
-// =====================
+// Envia o estado para todos a cada 50ms
 setInterval(() => {
-    const now = Date.now();
-    let elapsed = now - WORLD.startTime;
-
-    if (elapsed >= WORLD.duration) {
-        WORLD.startTime = now;
-        elapsed = 0;
-    }
-
-    const shrinkSteps = Math.floor(elapsed / WORLD.shrinkInterval);
-    const arenaSize = Math.max(200, WORLD.arenaStart - shrinkSteps * WORLD.shrinkStep);
-
-    const payload = JSON.stringify({
-        type: "state",
-        players: players,
-        world: { time: elapsed, arena: arenaSize }
-    });
-
+    const payload = JSON.stringify({ type: "state", players });
     wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(payload);
-        }
+        if (client.readyState === WebSocket.OPEN) client.send(payload);
     });
 }, 50);
 
-// =====================
-// START 🚀
-// =====================
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-    console.log("Servidor rodando na porta", PORT);
-});
+server.listen(PORT, () => console.log(`Rodando em: http://localhost:${PORT}`));
