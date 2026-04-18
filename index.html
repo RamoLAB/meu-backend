@@ -4,102 +4,296 @@
 
 <canvas id="g"></canvas>
 
-<div style="position:fixed; top:10px; left:50%; transform:translateX(-50%); font-family:sans-serif; text-align:center; pointer-events:none; background:rgba(255,255,255,0.7); padding:10px; border-radius:10px;">
-    <div style="font-size:12px; color:#666;">ARENA: <span id="arenaSize">1000</span></div>
-    <div id="timer" style="font-weight:bold; font-size:18px;">60s</div>
+<div style="position:fixed; top:10px; right:10px; font-family:sans-serif;">
+    Volta: <span id="lap">1</span>/5
 </div>
 
 <script>
-const c = g; const x = c.getContext("2d");
+const c = g;
+const x = c.getContext("2d");
 
-// ==========================
-// CONFIGURAÇÃO DA REDE 🌐
-// ==========================
+// =====================
+// NETWORK
+// =====================
 const PLAYER_ID = Math.random().toString(36).slice(2,9);
-const PLAYER_COLOR = "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0");
+const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 
-// AQUI ESTÁ O SEGREDO: Conecta no seu Render, não no GitHub
-const WS_URL = "wss://meu-backend-0rzt.onrender.com"; 
-
-let ws = new WebSocket(WS_URL);
 let players = {};
-let serverWorld = { time: 0, arena: 1000 };
-let p = { x: 300, y: 300, angle: 0, speed: 0 };
+let stateBuffer = [];
+const RENDER_DELAY = 60;
+
+// =====================
+// TRACK
+// =====================
+const track = {
+    pitW: 100
+};
+
+// =====================
+// PLAYER
+// =====================
+let p = {
+    x: 0,
+    y: 0,
+    angle: Math.PI,
+    speed: 0,
+    lap: 1,
+    lastCross: false,
+    stage: 0,
+    boost: 0,
+    isBoosting: false,
+    tyre: 100,
+    color: `hsl(${Math.random()*360},70%,50%)`
+};
+
+// =====================
+// INPUT
+// =====================
 let k = {};
+let accelerating = false;
+let braking = false;
 
-ws.onopen = () => {
-    console.log("Conectado ao servidor!");
-    ws.send(JSON.stringify({ type: "join", id: PLAYER_ID, color: PLAYER_COLOR }));
-};
-
-ws.onmessage = (msg) => {
-    const data = JSON.parse(msg.data);
-    if(data.type === "state") {
-        players = data.players;
-        serverWorld = data.world;
-        document.getElementById("arenaSize").innerText = Math.floor(serverWorld.arena);
-        document.getElementById("timer").innerText = Math.ceil((60000 - serverWorld.time) / 1000) + "s";
-    }
-};
-
-ws.onerror = (err) => console.error("Erro no WebSocket:", err);
-
-// Envia posição a cada 50ms
-setInterval(() => {
-    if(ws.readyState === 1) {
-        ws.send(JSON.stringify({ type: "move", id: PLAYER_ID, x: p.x, y: p.y, angle: p.angle }));
-    }
-}, 50);
-
-// ==========================
-// CONTROLES E LOOP 🕹️
-// ==========================
 onkeydown = e => k[e.key.toLowerCase()] = 1;
 onkeyup = e => k[e.key.toLowerCase()] = 0;
-onresize = () => { c.width = innerWidth; c.height = innerHeight; };
+
+// =====================
+// RESIZE
+// =====================
+onresize = () => {
+    c.width = innerWidth;
+    c.height = innerHeight;
+
+    track.w = c.width;
+    track.h = c.height;
+    track.innerW = track.w * 0.6;
+    track.innerH = track.h * 0.5;
+    track.innerX = (track.w - track.innerW)/2;
+    track.innerY = (track.h - track.innerH)/2;
+
+    track.pitH = track.h * 0.4;
+    track.pitY = (track.h - track.pitH)/2;
+
+    p.x = track.w/2;
+    p.y = track.innerY/2;
+};
 onresize();
 
-function loop(){
-    // Movimentação
-    if(k["a"] || k["arrowleft"]) p.angle -= 0.05;
-    if(k["d"] || k["arrowright"]) p.angle += 0.05;
-    if(k["w"] || k["arrowup"]) p.speed = Math.min(p.speed + 0.2, 5);
-    else p.speed *= 0.98;
+// =====================
+// WEBSOCKET
+// =====================
+const ws = new WebSocket(WS_URL);
 
-    p.x += Math.cos(p.angle) * p.speed;
-    p.y += Math.sin(p.angle) * p.speed;
+ws.onopen = () => {
+    ws.send(JSON.stringify({
+        type:"join",
+        id:PLAYER_ID,
+        color:p.color
+    }));
+};
 
-    // Limpa a tela
-    x.clearRect(0,0,c.width,c.height);
+ws.onmessage = (e)=>{
+    const data = JSON.parse(e.data);
 
-    // Desenha todos os jogadores
-    for(let id in players) {
-        let o = players[id];
-        x.save();
-        x.translate(o.x, o.y);
-        x.rotate(o.angle || 0);
-        
-        // Sombra leve
-        x.shadowBlur = 5; 
-        x.shadowColor = "rgba(0,0,0,0.3)";
-        
-        // Cor do jogador
-        x.fillStyle = (id === PLAYER_ID) ? "#333" : (o.color || "#ccc");
-        x.fillRect(-15, -15, 30, 30);
-        
-        // Se for você, desenha contorno da cor escolhida
-        if(id === PLAYER_ID) {
-            x.strokeStyle = PLAYER_COLOR;
-            x.lineWidth = 3;
-            x.strokeRect(-15, -15, 30, 30);
-        }
-        
-        x.restore();
+    if(data.type === "state"){
+        stateBuffer.push({
+            time: Date.now(),
+            players: data.players
+        });
+
+        if(stateBuffer.length > 20) stateBuffer.shift();
     }
+};
+
+// envio
+setInterval(()=>{
+    if(ws.readyState !== 1) return;
+
+    ws.send(JSON.stringify({
+        type:"move",
+        id:PLAYER_ID,
+        x:p.x,
+        y:p.y,
+        angle:p.angle,
+        color:p.color,
+        lap:p.lap
+    }));
+},50);
+
+// =====================
+// CAR DRAW
+// =====================
+function drawCar(ctx, color, boost){
+    ctx.fillStyle = boost ? 'red' : '#111';
+    ctx.fillRect(2,4,6,8);
+    ctx.fillRect(22,4,6,8);
+    ctx.fillRect(1,20,7,9);
+    ctx.fillRect(22,20,7,9);
+
+    ctx.fillStyle='#444';
+    ctx.fillRect(8,7,14,2);
+    ctx.fillRect(7,24,16,2);
+
+    ctx.fillStyle='#111';
+    ctx.fillRect(4,2,22,3);
+
+    ctx.fillStyle=color;
+    ctx.fillRect(11,5,8,20);
+    ctx.fillRect(8,16,14,6);
+
+    ctx.fillStyle='#111';
+    ctx.fillRect(5,26,20,4);
+
+    ctx.fillStyle='#fff';
+    ctx.fillRect(13,14,4,4);
+}
+
+// =====================
+// LOOP
+// =====================
+function loop(){
+
+    // =====================
+    // INPUT
+    // =====================
+    if(k["arrowleft"]||k["a"]) p.angle -= 0.05;
+    if(k["arrowright"]||k["d"]) p.angle += 0.05;
+
+    let accel = k["arrowup"]||k["w"];
+    let brake = k["arrowdown"]||k["s"];
+
+    let inPit = (p.x < track.pitW && p.y > track.pitY && p.y < track.pitY + track.pitH);
+
+    if(inPit) p.tyre = Math.min(100, p.tyre + 0.5);
+
+    let perf = p.tyre <= 25 ? 0.7 : 1;
+
+    if(accel){
+        p.speed += 0.35 * perf;
+        if(!p.isBoosting) p.boost = Math.min(100, p.boost + 0.1);
+        p.tyre -= 0.06;
+        if(p.speed > 8 * perf) p.speed = 8 * perf;
+    }
+
+    if(p.isBoosting && p.boost>0 && p.tyre>0){
+        p.speed += 0.6 * perf;
+        p.boost -= 0.5;
+        p.tyre -= 0.15;
+        if(p.speed > 14 * perf) p.speed = 14 * perf;
+    }
+
+    if(brake){
+        p.speed *= 0.85;
+        if(p.speed < 0.05) p.speed = 0;
+    }
+
+    if(!accel && !brake) p.speed *= 0.992;
+
+    // =====================
+    // MOVEMENT
+    // =====================
+    let nx = p.x + Math.cos(p.angle)*p.speed;
+    let ny = p.y + Math.sin(p.angle)*p.speed;
+
+    let hit =
+        nx < 10 || nx > track.w-10 ||
+        ny < 10 || ny > track.h-10 ||
+        (nx>track.innerX && nx<track.innerX+track.innerW &&
+         ny>track.innerY && ny<track.innerY+track.innerH);
+
+    if(!hit){
+        p.x = nx;
+        p.y = ny;
+    } else {
+        p.speed *= -0.3;
+    }
+
+    // =====================
+    // LAP
+    // =====================
+    if(p.stage==0 && p.x < track.innerX) p.stage=1;
+    if(p.stage==1 && p.y > track.innerY+track.innerH) p.stage=2;
+    if(p.stage==2 && p.x > track.innerX+track.innerW) p.stage=3;
+
+    let cross = (p.stage==3 && p.x < track.w/2 && p.y < track.innerY);
+    if(cross && !p.lastCross){
+        if(p.lap < 5){
+            p.lap++;
+            lap.innerText = p.lap;
+            p.stage = 0;
+        }
+    }
+    p.lastCross = cross;
+
+    // =====================
+    // DRAW TRACK
+    // =====================
+    x.fillStyle="#808080";
+    x.fillRect(0,0,c.width,c.height);
+
+    x.fillStyle="#c6c6c6";
+    x.fillRect(track.innerX,track.innerY,track.innerW,track.innerH);
+
+    x.strokeStyle="#5d5d5d";
+    x.lineWidth=4;
+    x.beginPath();
+    x.moveTo(track.w/2,0);
+    x.lineTo(track.w/2,track.innerY);
+    x.stroke();
+
+    // =====================
+    // INTERPOLATION
+    // =====================
+    const renderTime = Date.now() - RENDER_DELAY;
+    let older, newer;
+
+    for(let i=0;i<stateBuffer.length-1;i++){
+        if(stateBuffer[i].time <= renderTime &&
+           stateBuffer[i+1].time >= renderTime){
+            older = stateBuffer[i];
+            newer = stateBuffer[i+1];
+            break;
+        }
+    }
+
+    if(older && newer){
+        let t = (renderTime - older.time)/(newer.time - older.time);
+
+        for(let id in newer.players){
+
+            if(id === PLAYER_ID) continue;
+
+            let a = older.players[id];
+            let b = newer.players[id];
+            if(!a||!b) continue;
+
+            let ix = a.x + (b.x - a.x)*t;
+            let iy = a.y + (b.y - a.y)*t;
+            let ia = a.angle + (b.angle - a.angle)*t;
+
+            x.save();
+            x.translate(ix,iy);
+            x.rotate(ia + Math.PI/2);
+            x.translate(-15,-15);
+            drawCar(x, b.color || "#999", b.isBoosting);
+            x.restore();
+        }
+    }
+
+    // =====================
+    // PLAYER LOCAL
+    // =====================
+    x.save();
+    x.translate(p.x,p.y);
+    x.rotate(p.angle + Math.PI/2);
+    x.translate(-15,-15);
+    drawCar(x, p.color, p.isBoosting);
+    x.restore();
 
     requestAnimationFrame(loop);
 }
+
 loop();
 </script>
+
 </body>
 </html>
