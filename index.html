@@ -4,78 +4,34 @@
 
 <canvas id="g"></canvas>
 
-<div style="position:fixed; top:10px; right:10px; font-family:sans-serif;">
-    Volta: <span id="lap">1</span>/5
-</div>
-
-<div style="position:fixed; bottom:20px; right:20px; display:flex; gap:12px; align-items: flex-end;">
-    <div style="display:flex; flex-direction:column; gap:12px;">
-        <div style="width:80px; height:15px; border:2px solid #00adef;">
-            <div id="tyreBar" style="width:100%; height:100%; background:#00adef;"></div>
-        </div>
-        <div id="brake" style="width:80px;height:80px;border:1px solid #ccc;border-radius:12px;display:flex;align-items:center;justify-content:center;">FREIO</div>
-    </div>
-    
-    <div style="display:flex; flex-direction:column; gap:12px;">
-        <div id="boostBtn" style="width:80px;height:80px;border:2px solid red;border-radius:50%;display:flex;align-items:center;justify-content:center;">BOOST</div>
-        <div style="width:80px; height:15px; border:2px solid red;">
-            <div id="boostBar" style="width:0%; height:100%; background:red;"></div>
-        </div>
-        <div id="gas" style="width:80px;height:80px;border:1px solid #ccc;border-radius:12px;display:flex;align-items:center;justify-content:center;">ACEL.</div>
-    </div>
+<div style="position:fixed; bottom:20px; right:20px; display:flex; gap:10px;">
+    <div id="brake" style="width:80px;height:80px;border:1px solid #ccc;border-radius:10px;display:flex;align-items:center;justify-content:center;">FREIO</div>
+    <div id="gas" style="width:80px;height:80px;border:1px solid #ccc;border-radius:10px;display:flex;align-items:center;justify-content:center;">ACEL.</div>
 </div>
 
 <script>
 const c = g;
 const x = c.getContext("2d");
 
-// ================= WS =================
-const WS_URL = "wss://SEU-SERVIDOR.onrender.com"; // TROQUE
-let socket = new WebSocket(WS_URL);
-let myId = null;
+const WS_URL = "wss://meu-backend-0rzt.onrender.com";
+
+const PLAYER_ID = Math.random().toString(36).substring(2, 10);
+
 let others = {};
-
-// ================= TRACK =================
-const track = {};
-function resize(){
-    c.width = innerWidth;
-    c.height = innerHeight;
-
-    track.w = c.width;
-    track.h = c.height;
-    track.innerW = track.w * 0.6;
-    track.innerH = track.h * 0.5;
-    track.innerX = (track.w - track.innerW) / 2;
-    track.innerY = (track.h - track.innerH) / 2;
-
-    track.pitW = 100;
-    track.pitH = track.h * 0.4;
-    track.pitY = (track.h - track.pitH) / 2;
-
-    p.x = track.w/2;
-    p.y = track.innerY/2;
-}
-onresize = resize;
-resize();
-
-// ================= PLAYER =================
-let p = {
-    x:0,y:0,
-    angle:Math.PI,
-    speed:0,
-    lap:1,
-    lastCross:false,
-    stage:0,
-    boost:0,
-    isBoosting:false,
-    tyre:100,
-    color:`hsl(${Math.random()*360},70%,50%)`
-};
-
 let k = {};
 let accelerating = false;
 let braking = false;
 
+// ================= PLAYER =================
+let p = {
+    x: 200,
+    y: 200,
+    angle: 0,
+    speed: 0,
+    color: `hsl(${Math.random()*360},70%,50%)`
+};
+
+// ================= INPUT =================
 onkeydown = e => k[e.key.toLowerCase()] = 1;
 onkeyup = e => k[e.key.toLowerCase()] = 0;
 
@@ -87,115 +43,88 @@ brake.onmousedown = () => braking = true;
 brake.onmouseup = () => braking = false;
 brake.onmouseleave = () => braking = false;
 
-boostBtn.onmousedown = () => { if(p.boost>0 && p.tyre>0) p.isBoosting=true; };
-boostBtn.onmouseup = () => p.isBoosting=false;
-boostBtn.onmouseleave = () => p.isBoosting=false;
+// ================= WS =================
+const ws = new WebSocket(WS_URL);
 
-// ================= SOCKET =================
-socket.onmessage = (e)=>{
-    const d = JSON.parse(e.data);
-
-    if(d.type==="init") myId = d.id;
-    if(d.type==="state") others = d.players;
+ws.onopen = () => {
+    ws.send(JSON.stringify({ type:"join", id:PLAYER_ID }));
 };
 
-// ================= DRAW CAR =================
-function drawCar(ctx,color,isBoosting){
-    ctx.fillStyle = isBoosting ? "red" : "#111";
-    ctx.fillRect(2,4,6,8);
-    ctx.fillRect(22,4,6,8);
-    ctx.fillRect(1,20,7,9);
-    ctx.fillRect(22,20,7,9);
+ws.onmessage = (e)=>{
+    const data = JSON.parse(e.data);
+    if(data.type==="state"){
+        others = data.players;
+    }
+};
 
-    ctx.fillStyle = color;
-    ctx.fillRect(11,5,8,20);
-    ctx.fillRect(8,16,14,6);
-}
+// envio compatível
+setInterval(()=>{
+    if(ws.readyState!==1) return;
+
+    ws.send(JSON.stringify({
+        type:"move",
+        id:PLAYER_ID,
+        x:p.x,
+        y:p.y,
+        color:p.color
+    }));
+},50);
 
 // ================= LOOP =================
 function loop(){
 
+    // direção
     if(k["arrowleft"]||k["a"]) p.angle -= 0.05;
     if(k["arrowright"]||k["d"]) p.angle += 0.05;
 
-    let accelInput = accelerating || k["arrowup"] || k["w"];
-    let inPit = (p.x < track.pitW && p.y > track.pitY && p.y < track.pitY + track.pitH);
-
-    if(inPit) p.tyre = Math.min(100, p.tyre + 0.5);
-
-    let perf = p.tyre <= 25 ? 0.7 : 1;
-
-    if(accelInput){
-        p.speed += 0.35 * perf;
-        if(!p.isBoosting) p.boost = Math.min(100, p.boost + 0.1);
-        p.tyre -= 0.06;
-        if(p.speed > 8 * perf) p.speed = 8 * perf;
+    // aceleração SOMENTE pedal
+    if(accelerating){
+        p.speed += 0.3;
+        if(p.speed > 6) p.speed = 6;
     }
 
-    if(p.isBoosting && p.boost > 0){
-        p.speed += 0.6 * perf;
-        p.boost -= 0.5;
-        if(p.speed > 14 * perf) p.speed = 14 * perf;
-    }
-
+    // freio
     if(braking){
-        p.speed *= 0.85;
+        p.speed *= 0.8;
         if(p.speed < 0.05) p.speed = 0;
     }
 
-    p.speed *= 0.992;
+    // atrito
+    p.speed *= 0.98;
 
-    boostBar.style.width = p.boost + "%";
-    tyreBar.style.width = p.tyre + "%";
-
+    // movimento
     p.x += Math.cos(p.angle) * p.speed;
     p.y += Math.sin(p.angle) * p.speed;
 
     // ================= DRAW =================
-    x.fillStyle="#808080";
+    x.fillStyle = "#ddd";
     x.fillRect(0,0,c.width,c.height);
-
-    // pista
-    x.fillStyle="#c6c6c6";
-    x.fillRect(track.innerX,track.innerY,track.innerW,track.innerH);
-
-    // pit
-    x.fillStyle="#5d5d5d";
-    x.fillRect(0,track.pitY,track.pitW,track.pitH);
 
     // outros players
     for(let id in others){
-        if(id===myId) continue;
-        let op = others[id];
+        if(id === PLAYER_ID) continue;
+        let o = others[id];
 
-        x.save();
-        x.translate(op.x,op.y);
-        x.rotate(op.angle + Math.PI/2);
-        x.translate(-15,-15);
-        drawCar(x, op.color, false);
-        x.restore();
+        x.fillStyle = o.color || "#999";
+        x.fillRect(o.x, o.y, 30, 30);
     }
 
     // você
     x.save();
-    x.translate(p.x,p.y);
-    x.rotate(p.angle + Math.PI/2);
-    x.translate(-15,-15);
-    drawCar(x,p.color,p.isBoosting);
+    x.translate(p.x, p.y);
+    x.rotate(p.angle);
+    x.fillStyle = p.color;
+    x.fillRect(-15,-15,30,30);
     x.restore();
-
-    // enviar estado
-    if(socket.readyState===1 && myId){
-        socket.send(JSON.stringify({
-            type:"update",
-            player:p
-        }));
-    }
 
     requestAnimationFrame(loop);
 }
 
+onresize = ()=>{ c.width=innerWidth; c.height=innerHeight; };
+onresize();
+
 loop();
 </script>
+
 </body>
 </html>
