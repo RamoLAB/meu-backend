@@ -1,60 +1,58 @@
 const WebSocket = require("ws");
 
 const PORT = process.env.PORT || 10000;
-const wss = new WebSocket.Server({ port: PORT });
+
+// FIX para Render (obrigatório)
+const server = require("http").createServer();
+const wss = new WebSocket.Server({ server });
 
 let players = {};
 
 wss.on("connection", (ws) => {
 
-    let playerId = null;
+    let id = null;
 
     ws.on("message", (msg) => {
         try {
             const data = JSON.parse(msg);
 
-            // jogador entra
             if (data.type === "join") {
-                playerId = data.id;
+                id = data.id;
 
-                players[playerId] = {
-                    x: 100,
-                    y: 100,
-                    color: `hsl(${Math.random() * 360},70%,50%)`
+                players[id] = {
+                    x: 200,
+                    y: 200,
+                    color: data.color
                 };
             }
 
-            // movimento
-            if (data.type === "move" && playerId) {
-                players[playerId] = {
-                    x: data.x,
-                    y: data.y,
-                    color: data.color || players[playerId]?.color
-                };
+            if (data.type === "move" && id) {
+                players[id].x = data.x;
+                players[id].y = data.y;
             }
 
-        } catch (e) {}
+        } catch {}
     });
 
     ws.on("close", () => {
-        if (playerId) delete players[playerId];
+        if (id) delete players[id];
     });
 });
 
-// broadcast (20x por segundo)
+// broadcast estável
 setInterval(() => {
-
     const payload = JSON.stringify({
         type: "state",
-        players: players
+        players
     });
 
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(payload);
-        }
+    wss.clients.forEach(c => {
+        if (c.readyState === 1) c.send(payload);
     });
 
 }, 50);
 
-console.log("Servidor rodando na porta", PORT);
+// obrigatório pro Render não matar
+server.listen(PORT, () => {
+    console.log("running", PORT);
+});
