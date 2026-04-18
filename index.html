@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Multiplayer Racing Arena</title>
+    <title>Racing Multiplayer</title>
 </head>
 <body style="margin:0; overflow:hidden; background:#fff">
 
@@ -24,7 +24,6 @@
         </div>
         <div id="brake" style="width:80px;height:80px;border:1px solid #ccc;border-radius:12px;display:flex;align-items:center;justify-content:center;font-family:sans-serif;background:#eee;cursor:pointer;">FREIO</div>
     </div>
-    
     <div style="display:flex; flex-direction:column; gap:12px;">
         <div id="boostBtn" style="width:80px;height:80px;border:2px solid red;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:sans-serif;font-size:12px;cursor:pointer;background:#fff;">BOOST</div>
         <div style="width:80px; height:15px; border:2px solid red; position:relative; box-sizing: border-box;">
@@ -35,21 +34,20 @@
 </div>
 
 <script>
-const c = g;
-const x = c.getContext("2d");
+const c = g; const x = c.getContext("2d");
 
 // ==========================
-// NETWORK 🌐
+// REDE (MULTIPLAYER) 🌐
 // ==========================
 const PLAYER_ID = Math.random().toString(36).slice(2,9);
 const PLAYER_COLOR = "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6,"0");
 
-// Detecta automaticamente se o servidor é local ou o Render
+// Conecta automaticamente ao servidor atual (localhost ou Render)
 const isLocal = location.hostname === "localhost" || location.hostname === "127.0.0.1";
 const WS_URL = isLocal ? "ws://localhost:10000" : location.origin.replace(/^http/, 'ws');
 
 let ws = new WebSocket(WS_URL);
-let players = {};
+let players = {}; // Aqui ficam os dados de todos os jogadores
 let serverWorld = { time: 0, arena: 1000 };
 
 ws.onopen = () => {
@@ -59,13 +57,14 @@ ws.onopen = () => {
 ws.onmessage = (msg) => {
     const data = JSON.parse(msg.data);
     if(data.type === "state") {
-        players = data.players;
+        players = data.players; // Atualiza a lista global vinda do servidor
         serverWorld = data.world;
         document.getElementById("arenaSize").innerText = Math.floor(serverWorld.arena);
         document.getElementById("timer").innerText = Math.ceil((60000 - serverWorld.time) / 1000) + "s";
     }
 };
 
+// Envia sua posição para o servidor constantemente
 setInterval(() => {
     if(ws.readyState === 1) {
         ws.send(JSON.stringify({
@@ -75,7 +74,7 @@ setInterval(() => {
 }, 50);
 
 // ==========================
-// JOGO 🏎️
+// LÓGICA DO CARRO 🏎️
 // ==========================
 const track = { w: 0, h: 0, innerX: 0, innerY: 0, innerW: 0, innerH: 0, pitW: 100, pitY: 0, pitH: 0 };
 let p = { x: 0, y: 0, angle: Math.PI, speed: 0, lap: 1, lastCross: false, stage: 0, boost: 0, isBoosting: false, tyre: 100 };
@@ -85,8 +84,7 @@ onresize = () => {
     c.width = innerWidth; c.height = innerHeight;
     track.w = c.width; track.h = c.height;
     track.innerW = track.w * 0.6; track.innerH = track.h * 0.5;
-    track.innerX = (track.w - track.innerW) / 2;
-    track.innerY = (track.h - track.innerH) / 2;
+    track.innerX = (track.w - track.innerW) / 2; track.innerY = (track.h - track.innerH) / 2;
     track.pitH = track.h * 0.4; track.pitY = (track.h - track.pitH) / 2;
     p.x = track.w / 2; p.y = track.innerY / 2;
 };
@@ -95,7 +93,6 @@ onresize();
 onkeydown = e => k[e.key.toLowerCase()] = 1;
 onkeyup = e => k[e.key.toLowerCase()] = 0;
 
-// Toque/Clique para os botões do HUD
 const setupBtn = (el, type) => {
     const start = () => { if(type === 'gas') accelerating = true; if(type === 'brake') braking = true; if(type === 'boost' && p.boost > 0) p.isBoosting = true; };
     const end = () => { if(type === 'gas') accelerating = false; if(type === 'brake') braking = false; if(type === 'boost') p.isBoosting = false; };
@@ -105,7 +102,6 @@ const setupBtn = (el, type) => {
 setupBtn(gas, 'gas'); setupBtn(brake, 'brake'); setupBtn(boostBtn, 'boost');
 
 function loop(){
-    // Controles de giro
     if(k["arrowleft"]||k["a"]) p.angle -= 0.05;
     if(k["arrowright"]||k["d"]) p.angle += 0.05;
 
@@ -114,7 +110,6 @@ function loop(){
     if(inPit) p.tyre = Math.min(100, p.tyre + 0.5);
 
     let perf = p.tyre <= 25 ? 0.7 : 1;
-
     if(accelInput){
         p.speed += 0.35 * perf;
         if(!p.isBoosting) p.boost = Math.min(100, p.boost + 0.1);
@@ -140,7 +135,6 @@ function loop(){
 
     if(!hit){ p.x = nx; p.y = ny; } else { p.speed *= -0.3; }
 
-    // Sistema de Voltas
     if(p.stage == 0 && p.x < track.innerX) p.stage = 1;
     if(p.stage == 1 && p.y > track.innerY + track.innerH) p.stage = 2;
     if(p.stage == 2 && p.x > track.innerX + track.innerW) p.stage = 3;
@@ -152,30 +146,36 @@ function loop(){
 
     // DESENHO 🎨
     x.clearRect(0, 0, c.width, c.height);
-    x.fillStyle = "#e0f7ff"; x.fillRect(0, track.pitY, track.pitW, track.pitH); // Pit Stop
-    x.strokeStyle = "#000"; x.lineWidth = 5; x.strokeRect(0, 0, track.w, track.h); // Borda externa
-    x.lineWidth = 2; x.strokeRect(track.innerX, track.innerY, track.innerW, track.innerH); // Miolo
-    x.beginPath(); x.moveTo(track.w/2, 0); x.lineTo(track.w/2, track.innerY); x.stroke(); // Chegada
+    
+    // Desenha pista
+    x.fillStyle = "#e0f7ff"; x.fillRect(0, track.pitY, track.pitW, track.pitH);
+    x.strokeStyle = "#000"; x.lineWidth = 5; x.strokeRect(0, 0, track.w, track.h);
+    x.lineWidth = 2; x.strokeRect(track.innerX, track.innerY, track.innerW, track.innerH);
+    x.beginPath(); x.moveTo(track.w/2, 0); x.lineTo(track.w/2, track.innerY); x.stroke();
 
-    // Outros jogadores
+    // DESENHA OUTROS JOGADORES 👥
     for(let id in players){
-        if(id === PLAYER_ID) continue;
+        if(id === PLAYER_ID) continue; // Pula você mesmo (você é desenhado depois)
         let o = players[id];
         x.save();
-        x.translate(o.x, o.y); x.rotate(o.angle || 0);
+        x.translate(o.x, o.y);
+        x.rotate(o.angle || 0);
         x.fillStyle = o.color || "#ccc";
-        x.shadowBlur = 5; x.shadowColor = "rgba(0,0,0,0.3)";
-        x.fillRect(-15, -15, 30, 30); // Quadrado com sombra leve
+        x.shadowBlur = 5; x.shadowColor = "rgba(0,0,0,0.3)"; // Sombreamento leve
+        x.fillRect(-15, -15, 30, 30);
         x.restore();
     }
 
-    // Você
+    // DESENHA SEU CARRO 👤
     x.save();
-    x.translate(p.x, p.y); x.rotate(p.angle);
-    x.shadowBlur = 8; x.shadowColor = "rgba(0,0,0,0.4)";
-    x.fillStyle = "#333"; x.fillRect(-15, -15, 30, 30);
+    x.translate(p.x, p.y);
+    x.rotate(p.angle);
+    x.shadowBlur = 8; x.shadowColor = "rgba(0,0,0,0.4)"; // Sombreamento leve
+    x.fillStyle = "#333";
+    x.fillRect(-15, -15, 30, 30);
     x.strokeStyle = p.isBoosting ? "red" : PLAYER_COLOR;
-    x.lineWidth = 3; x.strokeRect(-15, -15, 30, 30);
+    x.lineWidth = 3;
+    x.strokeRect(-15, -15, 30, 30);
     x.restore();
 
     requestAnimationFrame(loop);
