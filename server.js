@@ -1,63 +1,104 @@
-const express = require("express");
-const http = require("http");
 const WebSocket = require("ws");
-const path = require("path");
 
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
+const PORT = process.env.PORT || 3000;
 
-// Serve arquivos estáticos da pasta raiz
-app.use(express.static(path.join(__dirname, ".")));
-
-// ROTA EXPLÍCITA: Se alguém acessar o site, envia o index.html
-app.get("/", (req, res) => {
-    res.sendFile(path.join(__dirname, "index.html"));
-});
+const wss = new WebSocket.Server({ port: PORT });
 
 let players = {};
+let connections = new Map(); // ws -> playerId
 
-const WORLD = {
-    startTime: Date.now(),
-    duration: 60000,
-    arenaStart: 1000,
-    shrinkStep: 100,
-    shrinkInterval: 10000
-};
-
+// =======================
+// CONNECTION
+// =======================
 wss.on("connection", (ws) => {
+
     let playerId = null;
+
     ws.on("message", (msg) => {
+        let data;
+
         try {
-            const data = JSON.parse(msg);
-            if (data.type === "join") {
-                playerId = data.id;
-                players[playerId] = { x: 300, y: 300, angle: 0, color: data.color };
-            }
-            if (data.type === "move" && players[data.id]) {
-                players[data.id].x = data.x;
-                players[data.id].y = data.y;
-                players[data.id].angle = data.angle;
-            }
-        } catch (e) {}
+            data = JSON.parse(msg);
+        } catch {
+            return;
+        }
+
+        // ===================
+        // JOIN
+        // ===================
+        if (data.type === "join") {
+
+            playerId = data.id;
+
+            connections.set(ws, playerId);
+
+            players[playerId] = {
+                x: 0,
+                y: 0,
+                angle: 0,
+                color: data.color || "#999",
+                isBoosting: false,
+                lap: 1
+            };
+        }
+
+        // ===================
+        // MOVE
+        // ===================
+        if (data.type === "move") {
+
+            if (!players[data.id]) return;
+
+            players[data.id] = {
+                x: data.x,
+                y: data.y,
+                angle: data.angle,
+                color: data.color,
+                isBoosting: data.isBoosting || false,
+                lap: data.lap || 1
+            };
+        }
     });
-    ws.on("close", () => { if (playerId) delete players[playerId]; });
+
+    // =======================
+    // DISCONNECT
+    // =======================
+    ws.on("close", () => {
+
+        const id = connections.get(ws);
+
+        if (id && players[id]) {
+            delete players[id];
+        }
+
+        connections.delete(ws);
+    });
+
 });
 
+// =======================
+// BROADCAST LOOP
+// =======================
 setInterval(() => {
-    const now = Date.now();
-    let elapsed = now - WORLD.startTime;
-    if (elapsed >= WORLD.duration) { WORLD.startTime = now; elapsed = 0; }
-    const shrinkSteps = Math.floor(elapsed / WORLD.shrinkInterval);
-    const arenaSize = Math.max(200, WORLD.arenaStart - shrinkSteps * WORLD.shrinkStep);
 
-    const payload = JSON.stringify({ 
-        type: "state", 
-        players, 
-        world: { time: elapsed, arena: arenaSize } 
+    const packet = JSON.stringify({
+        type: "state",
+        players: players
     });
-    wss.clients.forEach(c => { if (c.readyState === WebSocket.OPEN) c.send(payload); });
+
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(packet);
+        }
+    });
+
 }, 50);
 
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log("Servidor Online"));
+// =======================
+// HEALTH LOG
+// =======================
+setInterval(() => {
+    console.log("Players online:", Object.keys(players).length);
+}, 5000);
+
+console.log("Server running on port", PORT);
