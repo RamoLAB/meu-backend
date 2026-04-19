@@ -1,10 +1,10 @@
 const WebSocket = require("ws");
+const http = require("http");
+
+const server = http.createServer();
+const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 10000;
-
-// FIX para Render (obrigatório)
-const server = require("http").createServer();
-const wss = new WebSocket.Server({ server });
 
 let players = {};
 
@@ -13,46 +13,36 @@ wss.on("connection", (ws) => {
     let id = null;
 
     ws.on("message", (msg) => {
-        try {
+        try{
             const data = JSON.parse(msg);
 
-            if (data.type === "join") {
+            if(data.type === "join"){
                 id = data.id;
-
-                players[id] = {
-                    x: 200,
-                    y: 200,
-                    color: data.color
-                };
+                players[id] = data.player;
             }
 
-            if (data.type === "move" && id) {
-                players[id].x = data.x;
-                players[id].y = data.y;
+            if(data.type === "update" && id){
+                players[id] = data.player;
             }
 
-        } catch {}
+        }catch{}
     });
 
-    ws.on("close", () => {
-        if (id) delete players[id];
+    ws.on("close", ()=>{
+        if(id) delete players[id];
     });
 });
 
-// broadcast estável
-setInterval(() => {
+setInterval(()=>{
     const payload = JSON.stringify({
-        type: "state",
+        type:"state",
         players
     });
 
-    wss.clients.forEach(c => {
-        if (c.readyState === 1) c.send(payload);
+    wss.clients.forEach(c=>{
+        if(c.readyState===1) c.send(payload);
     });
 
-}, 50);
+},50);
 
-// obrigatório pro Render não matar
-server.listen(PORT, () => {
-    console.log("running", PORT);
-});
+server.listen(PORT, ()=>console.log("running", PORT));
