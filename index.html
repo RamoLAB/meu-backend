@@ -8,20 +8,19 @@
     Volta: <span id="lap">1</span>/5
 </div>
 
-<div style="position:fixed; bottom:20px; right:20px; display:flex; gap:12px; align-items: flex-end;">
-    <div style="display:flex; flex-direction:column; gap:12px;">
+<div style="position:fixed; bottom:20px; right:20px; display:flex; gap:12px;">
+    <div>
         <div style="width:80px; height:15px; border:2px solid #00adef;">
             <div id="tyreBar" style="width:100%; height:100%; background:#00adef;"></div>
         </div>
-        <div id="brake" style="width:80px;height:80px;border:1px solid #ccc;border-radius:12px;display:flex;align-items:center;justify-content:center;">FREIO</div>
+        <div id="brake" style="width:80px;height:80px;border:1px solid #ccc;">FREIO</div>
     </div>
-    
-    <div style="display:flex; flex-direction:column; gap:12px;">
-        <div id="boostBtn" style="width:80px;height:80px;border:2px solid red;border-radius:50%;display:flex;align-items:center;justify-content:center;">BOOST</div>
+    <div>
+        <div id="boostBtn" style="width:80px;height:80px;border:2px solid red;border-radius:50%;">BOOST</div>
         <div style="width:80px; height:15px; border:2px solid red;">
             <div id="boostBar" style="width:0%; height:100%; background:red;"></div>
         </div>
-        <div id="gas" style="width:80px;height:80px;border:1px solid #ccc;border-radius:12px;display:flex;align-items:center;justify-content:center;">ACEL</div>
+        <div id="gas" style="width:80px;height:80px;border:1px solid #ccc;">ACEL</div>
     </div>
 </div>
 
@@ -35,153 +34,200 @@ const PLAYER_ID = Math.random().toString(36).substr(2,9);
 let ws;
 let others = {};
 
+// TRACK
+const track = {
+    w:0,h:0,
+    innerX:0,innerY:0,innerW:0,innerH:0,
+    pitW:100,pitY:0,pitH:0
+};
+
 // PLAYER
 let p = {
-    x: 200,
-    y: 200,
-    angle: Math.PI,
-    speed: 0,
-    boost: 0,
-    tyre: 100,
-    isBoosting: false,
-    color: `hsl(${Math.random()*360},70%,50%)`
+    x:0,y:0,
+    angle:Math.PI,
+    speed:0,
+    lap:1,
+    stage:0,
+    lastCross:false,
+    boost:0,
+    tyre:100,
+    isBoosting:false,
+    color:`hsl(${Math.random()*360},70%,50%)`
 };
 
 // INPUT
-let k = {};
-let accelerating = false;
-let braking = false;
+let k={}, accelerating=false, braking=false;
 
-onkeydown = e => k[e.key.toLowerCase()] = 1;
-onkeyup = e => k[e.key.toLowerCase()] = 0;
+onkeydown = e=>k[e.key.toLowerCase()]=1;
+onkeyup = e=>k[e.key.toLowerCase()]=0;
 
-gas.onmousedown = () => accelerating = true;
-gas.onmouseup = gas.onmouseleave = () => accelerating = false;
+gas.onmousedown=()=>accelerating=true;
+gas.onmouseup=gas.onmouseleave=()=>accelerating=false;
 
-brake.onmousedown = () => braking = true;
-brake.onmouseup = brake.onmouseleave = () => braking = false;
+brake.onmousedown=()=>braking=true;
+brake.onmouseup=brake.onmouseleave=()=>braking=false;
 
-boostBtn.onmousedown = () => {
-    if(p.boost > 0 && p.tyre > 0) p.isBoosting = true;
+boostBtn.onmousedown=()=>{ if(p.boost>0) p.isBoosting=true; };
+boostBtn.onmouseup=boostBtn.onmouseleave=()=>p.isBoosting=false;
+
+// RESIZE
+onresize=()=>{
+    c.width=innerWidth;
+    c.height=innerHeight;
+
+    track.w=c.width;
+    track.h=c.height;
+
+    track.innerW=track.w*0.6;
+    track.innerH=track.h*0.5;
+    track.innerX=(track.w-track.innerW)/2;
+    track.innerY=(track.h-track.innerH)/2;
+
+    track.pitH=track.h*0.4;
+    track.pitY=(track.h-track.pitH)/2;
+
+    p.x=track.w/2;
+    p.y=track.innerY/2;
 };
-boostBtn.onmouseup = boostBtn.onmouseleave = () => p.isBoosting = false;
+onresize();
 
-// CONEXÃO
+// WS
 function connect(){
-    ws = new WebSocket(WS_URL);
+    ws=new WebSocket(WS_URL);
 
-    ws.onopen = ()=>{
-        ws.send(JSON.stringify({
-            type:"join",
-            id:PLAYER_ID,
-            player:p
-        }));
+    ws.onopen=()=>{
+        ws.send(JSON.stringify({type:"join",id:PLAYER_ID,player:p}));
     };
 
-    ws.onmessage = (e)=>{
-        const data = JSON.parse(e.data);
-        if(data.type==="state"){
-            others = data.players;
-        }
+    ws.onmessage=(e)=>{
+        let d=JSON.parse(e.data);
+        if(d.type==="state") others=d.players;
     };
 
-    ws.onclose = ()=> setTimeout(connect,1000);
+    ws.onclose=()=>setTimeout(connect,1000);
 }
 connect();
 
-// DESENHO DO CARRO
-function drawCar(ctx, color, boost){
-    ctx.fillStyle = color;
-    ctx.fillRect(10, 5, 10, 20);
-
-    ctx.fillStyle = boost ? "red" : "#111";
-    ctx.fillRect(5, 5, 5, 10);
-    ctx.fillRect(20, 5, 5, 10);
-    ctx.fillRect(5, 20, 5, 10);
-    ctx.fillRect(20, 20, 5, 10);
+// DRAW CAR
+function drawCar(ctx,c,b){
+    ctx.fillStyle=c;
+    ctx.fillRect(10,5,10,20);
+    ctx.fillStyle=b?"red":"#111";
+    ctx.fillRect(5,5,5,10);
+    ctx.fillRect(20,5,5,10);
+    ctx.fillRect(5,20,5,10);
+    ctx.fillRect(20,20,5,10);
 }
 
 // LOOP
 function loop(){
 
-    // direção
-    if(k["arrowleft"]||k["a"]) p.angle -= 0.05;
-    if(k["arrowright"]||k["d"]) p.angle += 0.05;
+    if(k["arrowleft"]||k["a"]) p.angle-=0.05;
+    if(k["arrowright"]||k["d"]) p.angle+=0.05;
 
-    // aceleração
-    if(accelerating){
-        p.speed += 0.3;
-        if(p.speed > 8) p.speed = 8;
+    let accel = accelerating;
+    let inPit = (p.x < track.pitW && p.y > track.pitY && p.y < track.pitY+track.pitH);
 
-        p.boost = Math.min(100, p.boost + 0.1);
-        p.tyre = Math.max(0, p.tyre - 0.05);
+    if(inPit) p.tyre = Math.min(100,p.tyre+0.5);
+
+    if(accel){
+        p.speed+=0.35;
+        if(p.speed>8) p.speed=8;
+        p.boost=Math.min(100,p.boost+0.1);
+        p.tyre=Math.max(0,p.tyre-0.05);
     }
 
-    // boost
-    if(p.isBoosting && p.boost > 0){
-        p.speed += 0.5;
-        p.boost -= 0.5;
+    if(p.isBoosting && p.boost>0){
+        p.speed+=0.6;
+        p.boost-=0.5;
     }
 
-    // freio
-    if(braking){
-        p.speed *= 0.8;
+    if(braking) p.speed*=0.85;
+
+    let nx=p.x+Math.cos(p.angle)*p.speed;
+    let ny=p.y+Math.sin(p.angle)*p.speed;
+
+    let hit = false;
+
+    if(nx<15||nx>track.w-15||ny<15||ny>track.h-15) hit=true;
+    if(nx>track.innerX && nx<track.innerX+track.innerW && ny>track.innerY && ny<track.innerY+track.innerH) hit=true;
+
+    if(!hit){
+        p.x=nx; p.y=ny;
+    } else {
+        p.speed*=-0.3;
     }
 
-    // movimento
-    p.x += Math.cos(p.angle) * p.speed;
-    p.y += Math.sin(p.angle) * p.speed;
+    // LAP
+    if(p.stage==0 && p.x<track.innerX) p.stage=1;
+    if(p.stage==1 && p.y>track.innerY+track.innerH) p.stage=2;
+    if(p.stage==2 && p.x>track.innerX+track.innerW) p.stage=3;
 
-    // UI
-    boostBar.style.width = p.boost + "%";
-    tyreBar.style.width = p.tyre + "%";
+    let cross = (p.stage==3 && p.x<track.w/2 && p.y<track.innerY);
+    if(cross && !p.lastCross){
+        if(p.lap<5){
+            p.lap++;
+            lap.innerText=p.lap;
+            p.stage=0;
+        }
+    }
+    p.lastCross=cross;
 
-    // FUNDO
-    x.fillStyle = "#808080";
+    // DRAW
+    x.fillStyle="#808080";
     x.fillRect(0,0,c.width,c.height);
 
-    // OUTROS JOGADORES
-    for(let id in others){
-        if(id === PLAYER_ID) continue;
+    // PIT
+    x.fillStyle="#5d5d5d";
+    x.fillRect(0,track.pitY,track.pitW,track.pitH);
 
-        let o = others[id];
+    // TRACK
+    x.strokeStyle="#c6c6c6";
+    x.lineWidth=15;
+    x.strokeRect(0,0,track.w,track.h);
+
+    x.strokeStyle="#5d5d5d";
+    x.lineWidth=2;
+    x.strokeRect(track.innerX,track.innerY,track.innerW,track.innerH);
+
+    // START LINE
+    x.beginPath();
+    x.moveTo(track.w/2,0);
+    x.lineTo(track.w/2,track.innerY);
+    x.stroke();
+
+    // OUTROS
+    for(let id in others){
+        if(id===PLAYER_ID) continue;
+        let o=others[id];
 
         x.save();
-        x.translate(o.x, o.y);
-        x.rotate(o.angle + Math.PI/2);
+        x.translate(o.x,o.y);
+        x.rotate(o.angle+Math.PI/2);
         x.translate(-15,-15);
-        drawCar(x, o.color, o.isBoosting);
+        drawCar(x,o.color,o.isBoosting);
         x.restore();
     }
 
     // VOCÊ
     x.save();
-    x.translate(p.x, p.y);
-    x.rotate(p.angle + Math.PI/2);
+    x.translate(p.x,p.y);
+    x.rotate(p.angle+Math.PI/2);
     x.translate(-15,-15);
-    drawCar(x, p.color, p.isBoosting);
+    drawCar(x,p.color,p.isBoosting);
     x.restore();
 
-    // ENVIO
+    boostBar.style.width=p.boost+"%";
+    tyreBar.style.width=p.tyre+"%";
+
     if(ws && ws.readyState===1){
-        ws.send(JSON.stringify({
-            type:"update",
-            id:PLAYER_ID,
-            player:p
-        }));
+        ws.send(JSON.stringify({type:"update",id:PLAYER_ID,player:p}));
     }
 
     requestAnimationFrame(loop);
 }
 
-onresize = ()=>{
-    c.width = innerWidth;
-    c.height = innerHeight;
-};
-onresize();
-
 loop();
 </script>
-
 </body>
 </html>
