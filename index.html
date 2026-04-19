@@ -1,233 +1,172 @@
 <!DOCTYPE html>
 <html>
 <body style="margin:0; overflow:hidden; background:#fff">
-
 <canvas id="g"></canvas>
-
-<div style="position:fixed; top:10px; right:10px; font-family:sans-serif;">
-    Volta: <span id="lap">1</span>/5
-</div>
-
-<div style="position:fixed; bottom:20px; right:20px; display:flex; gap:12px;">
-    <div>
-        <div style="width:80px; height:15px; border:2px solid #00adef;">
-            <div id="tyreBar" style="width:100%; height:100%; background:#00adef;"></div>
-        </div>
-        <div id="brake" style="width:80px;height:80px;border:1px solid #ccc;">FREIO</div>
-    </div>
-    <div>
-        <div id="boostBtn" style="width:80px;height:80px;border:2px solid red;border-radius:50%;">BOOST</div>
-        <div style="width:80px; height:15px; border:2px solid red;">
-            <div id="boostBar" style="width:0%; height:100%; background:red;"></div>
-        </div>
-        <div id="gas" style="width:80px;height:80px;border:1px solid #ccc;">ACEL</div>
-    </div>
-</div>
 
 <script>
 const c = g;
 const x = c.getContext("2d");
 
+let p = { x: 50, y: 50, s: 5 };
+let k = {};
+
+const PLAYER_ID = Math.random().toString(36).substring(2, 10);
 const WS_URL = "wss://meu-backend-0rzt.onrender.com";
-const PLAYER_ID = Math.random().toString(36).substr(2,9);
 
-let ws;
-let others = {};
+let stateBuffer = [];
+const RENDER_DELAY = 50;
 
-// TRACK
-const track = {
-    w:0,h:0,
-    innerX:0,innerY:0,innerW:0,innerH:0,
-    pitW:100,pitY:0,pitH:0
+let worldTime = 0;
+
+// resize
+window.onresize = () => {
+    c.width = innerWidth;
+    c.height = innerHeight;
+};
+window.onresize();
+
+// input
+onkeydown = e => k[e.key] = 1;
+onkeyup = e => k[e.key] = 0;
+
+// websocket
+const ws = new WebSocket(WS_URL);
+
+ws.onopen = () => {
+    ws.send(JSON.stringify({
+        type: "join",
+        id: PLAYER_ID
+    }));
 };
 
-// PLAYER
-let p = {
-    x:0,y:0,
-    angle:Math.PI,
-    speed:0,
-    lap:1,
-    stage:0,
-    lastCross:false,
-    boost:0,
-    tyre:100,
-    isBoosting:false,
-    color:`hsl(${Math.random()*360},70%,50%)`
-};
+ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
 
-// INPUT
-let k={}, accelerating=false, braking=false;
+    if (data.type === "state") {
 
-onkeydown = e=>k[e.key.toLowerCase()]=1;
-onkeyup = e=>k[e.key.toLowerCase()]=0;
+        // 👇 NOVO: tempo global
+        if (data.world) {
+            worldTime = data.world.time;
+        }
 
-gas.onmousedown=()=>accelerating=true;
-gas.onmouseup=gas.onmouseleave=()=>accelerating=false;
+        stateBuffer.push({
+            time: Date.now(),
+            players: data.players
+        });
 
-brake.onmousedown=()=>braking=true;
-brake.onmouseup=brake.onmouseleave=()=>braking=false;
-
-boostBtn.onmousedown=()=>{ if(p.boost>0) p.isBoosting=true; };
-boostBtn.onmouseup=boostBtn.onmouseleave=()=>p.isBoosting=false;
-
-// RESIZE
-onresize=()=>{
-    c.width=innerWidth;
-    c.height=innerHeight;
-
-    track.w=c.width;
-    track.h=c.height;
-
-    track.innerW=track.w*0.6;
-    track.innerH=track.h*0.5;
-    track.innerX=(track.w-track.innerW)/2;
-    track.innerY=(track.h-track.innerH)/2;
-
-    track.pitH=track.h*0.4;
-    track.pitY=(track.h-track.pitH)/2;
-
-    p.x=track.w/2;
-    p.y=track.innerY/2;
-};
-onresize();
-
-// WS
-function connect(){
-    ws=new WebSocket(WS_URL);
-
-    ws.onopen=()=>{
-        ws.send(JSON.stringify({type:"join",id:PLAYER_ID,player:p}));
-    };
-
-    ws.onmessage=(e)=>{
-        let d=JSON.parse(e.data);
-        if(d.type==="state") others=d.players;
-    };
-
-    ws.onclose=()=>setTimeout(connect,1000);
-}
-connect();
-
-// DRAW CAR
-function drawCar(ctx,c,b){
-    ctx.fillStyle=c;
-    ctx.fillRect(10,5,10,20);
-    ctx.fillStyle=b?"red":"#111";
-    ctx.fillRect(5,5,5,10);
-    ctx.fillRect(20,5,5,10);
-    ctx.fillRect(5,20,5,10);
-    ctx.fillRect(20,20,5,10);
-}
-
-// LOOP
-function loop(){
-
-    if(k["arrowleft"]||k["a"]) p.angle-=0.05;
-    if(k["arrowright"]||k["d"]) p.angle+=0.05;
-
-    let accel = accelerating;
-    let inPit = (p.x < track.pitW && p.y > track.pitY && p.y < track.pitY+track.pitH);
-
-    if(inPit) p.tyre = Math.min(100,p.tyre+0.5);
-
-    if(accel){
-        p.speed+=0.35;
-        if(p.speed>8) p.speed=8;
-        p.boost=Math.min(100,p.boost+0.1);
-        p.tyre=Math.max(0,p.tyre-0.05);
-    }
-
-    if(p.isBoosting && p.boost>0){
-        p.speed+=0.6;
-        p.boost-=0.5;
-    }
-
-    if(braking) p.speed*=0.85;
-
-    let nx=p.x+Math.cos(p.angle)*p.speed;
-    let ny=p.y+Math.sin(p.angle)*p.speed;
-
-    let hit = false;
-
-    if(nx<15||nx>track.w-15||ny<15||ny>track.h-15) hit=true;
-    if(nx>track.innerX && nx<track.innerX+track.innerW && ny>track.innerY && ny<track.innerY+track.innerH) hit=true;
-
-    if(!hit){
-        p.x=nx; p.y=ny;
-    } else {
-        p.speed*=-0.3;
-    }
-
-    // LAP
-    if(p.stage==0 && p.x<track.innerX) p.stage=1;
-    if(p.stage==1 && p.y>track.innerY+track.innerH) p.stage=2;
-    if(p.stage==2 && p.x>track.innerX+track.innerW) p.stage=3;
-
-    let cross = (p.stage==3 && p.x<track.w/2 && p.y<track.innerY);
-    if(cross && !p.lastCross){
-        if(p.lap<5){
-            p.lap++;
-            lap.innerText=p.lap;
-            p.stage=0;
+        if (stateBuffer.length > 20) {
+            stateBuffer.shift();
         }
     }
-    p.lastCross=cross;
+};
 
-    // DRAW
-    x.fillStyle="#808080";
-    x.fillRect(0,0,c.width,c.height);
+// envio de posição
+setInterval(() => {
+    if (ws.readyState !== 1) return;
 
-    // PIT
-    x.fillStyle="#5d5d5d";
-    x.fillRect(0,track.pitY,track.pitW,track.pitH);
+    ws.send(JSON.stringify({
+        type: "move",
+        id: PLAYER_ID,
+        x: p.x,
+        y: p.y
+    }));
+}, 50);
 
-    // TRACK
-    x.strokeStyle="#c6c6c6";
-    x.lineWidth=15;
-    x.strokeRect(0,0,track.w,track.h);
+// loop principal
+function loop() {
 
-    x.strokeStyle="#5d5d5d";
-    x.lineWidth=2;
-    x.strokeRect(track.innerX,track.innerY,track.innerW,track.innerH);
+    if (k.ArrowUp || k.w) p.y -= p.s;
+    if (k.ArrowDown || k.s) p.y += p.s;
+    if (k.ArrowLeft || k.a) p.x -= p.s;
+    if (k.ArrowRight || k.d) p.x += p.s;
 
-    // START LINE
-    x.beginPath();
-    x.moveTo(track.w/2,0);
-    x.lineTo(track.w/2,track.innerY);
-    x.stroke();
+    p.x = Math.max(0, Math.min(c.width - 30, p.x));
+    p.y = Math.max(0, Math.min(c.height - 30, p.y));
 
-    // OUTROS
-    for(let id in others){
-        if(id===PLAYER_ID) continue;
-        let o=others[id];
+    x.fillStyle = "#fff";
+    x.fillRect(0, 0, c.width, c.height);
 
-        x.save();
-        x.translate(o.x,o.y);
-        x.rotate(o.angle+Math.PI/2);
-        x.translate(-15,-15);
-        drawCar(x,o.color,o.isBoosting);
-        x.restore();
+    const renderTime = Date.now() - RENDER_DELAY;
+
+    let older, newer;
+
+    for (let i = 0; i < stateBuffer.length - 1; i++) {
+        if (
+            stateBuffer[i].time <= renderTime &&
+            stateBuffer[i + 1].time >= renderTime
+        ) {
+            older = stateBuffer[i];
+            newer = stateBuffer[i + 1];
+            break;
+        }
     }
 
-    // VOCÊ
-    x.save();
-    x.translate(p.x,p.y);
-    x.rotate(p.angle+Math.PI/2);
-    x.translate(-15,-15);
-    drawCar(x,p.color,p.isBoosting);
-    x.restore();
+    if (older && newer) {
 
-    boostBar.style.width=p.boost+"%";
-    tyreBar.style.width=p.tyre+"%";
+        const t = (renderTime - older.time) / (newer.time - older.time);
 
-    if(ws && ws.readyState===1){
-        ws.send(JSON.stringify({type:"update",id:PLAYER_ID,player:p}));
+        for (let id in newer.players) {
+
+            if (id === PLAYER_ID) continue;
+
+            const p1 = older.players[id];
+            const p2 = newer.players[id];
+
+            if (!p1 || !p2) continue;
+
+            const ix = p1.x + (p2.x - p1.x) * t;
+            const iy = p1.y + (p2.y - p1.y) * t;
+
+            x.fillStyle = "#" + intToColor(id);
+            x.fillRect(ix, iy, 30, 30);
+        }
     }
+
+    else if (stateBuffer.length > 0) {
+
+        const latest = stateBuffer[stateBuffer.length - 1];
+
+        for (let id in latest.players) {
+            if (id === PLAYER_ID) continue;
+
+            const pl = latest.players[id];
+
+            x.fillStyle = "#" + intToColor(id);
+            x.fillRect(pl.x, pl.y, 30, 30);
+        }
+    }
+
+    // você
+    x.fillStyle = "#000";
+    x.fillRect(p.x, p.y, 30, 30);
+
+    // =====================
+    // TIMER GLOBAL (NOVO)
+    // =====================
+
+    const timeLeft = Math.max(0, 60 - Math.floor(worldTime / 1000));
+
+    x.fillStyle = "#000";
+    x.font = "20px Arial";
+    x.textAlign = "center";
+    x.fillText("Tempo: " + timeLeft + "s", c.width / 2, 30);
 
     requestAnimationFrame(loop);
 }
 
 loop();
+
+// cor por id
+function intToColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    let color = (hash & 0x00FFFFFF).toString(16).toUpperCase();
+    return "000000".substring(0, 6 - color.length) + color;
+}
 </script>
+
 </body>
 </html>
+
