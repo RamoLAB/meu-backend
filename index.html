@@ -1,60 +1,80 @@
 <!DOCTYPE html>
 <html>
-<body style="margin:0; overflow:hidden; background:#ddd">
+<body style="margin:0; overflow:hidden; background:#fff">
 
 <canvas id="g"></canvas>
 
-<div style="position:fixed; bottom:20px; right:20px; display:flex; gap:10px;">
-    <div id="brake" style="width:80px;height:80px;border:1px solid rgba(200,200,200,0.5);border-radius:10px;display:flex;align-items:center;justify-content:center;">FREIO</div>
-    <div id="gas" style="width:80px;height:80px;border:1px solid rgba(200,200,200,0.5);border-radius:10px;display:flex;align-items:center;justify-content:center;">ACEL.</div>
+<div style="position:fixed; top:10px; right:10px; font-family:sans-serif;">
+    Volta: <span id="lap">1</span>/5
+</div>
+
+<div style="position:fixed; bottom:20px; right:20px; display:flex; gap:12px; align-items: flex-end;">
+    <div style="display:flex; flex-direction:column; gap:12px;">
+        <div style="width:80px; height:15px; border:2px solid #00adef;">
+            <div id="tyreBar" style="width:100%; height:100%; background:#00adef;"></div>
+        </div>
+        <div id="brake" style="width:80px;height:80px;border:1px solid #ccc;border-radius:12px;display:flex;align-items:center;justify-content:center;">FREIO</div>
+    </div>
+    
+    <div style="display:flex; flex-direction:column; gap:12px;">
+        <div id="boostBtn" style="width:80px;height:80px;border:2px solid red;border-radius:50%;display:flex;align-items:center;justify-content:center;">BOOST</div>
+        <div style="width:80px; height:15px; border:2px solid red;">
+            <div id="boostBar" style="width:0%; height:100%; background:red;"></div>
+        </div>
+        <div id="gas" style="width:80px;height:80px;border:1px solid #ccc;border-radius:12px;display:flex;align-items:center;justify-content:center;">ACEL</div>
+    </div>
 </div>
 
 <script>
 const c = g;
 const x = c.getContext("2d");
 
-// IMPORTANTE: mantenha assim
 const WS_URL = "wss://meu-backend-0rzt.onrender.com";
+const PLAYER_ID = Math.random().toString(36).substr(2,9);
 
-const PLAYER_ID = Math.random().toString(36).substring(2, 10);
-
+let ws;
 let others = {};
-let k = {};
-let accelerating = false;
-let braking = false;
 
 // PLAYER
 let p = {
-    x: 300,
+    x: 200,
     y: 200,
-    angle: 0,
+    angle: Math.PI,
     speed: 0,
+    boost: 0,
+    tyre: 100,
+    isBoosting: false,
     color: `hsl(${Math.random()*360},70%,50%)`
 };
 
 // INPUT
+let k = {};
+let accelerating = false;
+let braking = false;
+
 onkeydown = e => k[e.key.toLowerCase()] = 1;
 onkeyup = e => k[e.key.toLowerCase()] = 0;
 
 gas.onmousedown = () => accelerating = true;
-gas.onmouseup = () => accelerating = false;
-gas.onmouseleave = () => accelerating = false;
+gas.onmouseup = gas.onmouseleave = () => accelerating = false;
 
 brake.onmousedown = () => braking = true;
-brake.onmouseup = () => braking = false;
-brake.onmouseleave = () => braking = false;
+brake.onmouseup = brake.onmouseleave = () => braking = false;
 
-// WS COM AUTO-RECONNECT
-let ws;
+boostBtn.onmousedown = () => {
+    if(p.boost > 0 && p.tyre > 0) p.isBoosting = true;
+};
+boostBtn.onmouseup = boostBtn.onmouseleave = () => p.isBoosting = false;
 
+// CONEXÃO
 function connect(){
     ws = new WebSocket(WS_URL);
 
-    ws.onopen = () => {
+    ws.onopen = ()=>{
         ws.send(JSON.stringify({
             type:"join",
             id:PLAYER_ID,
-            color:p.color
+            player:p
         }));
     };
 
@@ -65,74 +85,99 @@ function connect(){
         }
     };
 
-    ws.onclose = () => {
-        setTimeout(connect, 1000); // reconnect automático
-    };
+    ws.onclose = ()=> setTimeout(connect,1000);
 }
-
 connect();
 
-// envio contínuo
-setInterval(()=>{
-    if(ws.readyState!==1) return;
+// DESENHO DO CARRO
+function drawCar(ctx, color, boost){
+    ctx.fillStyle = color;
+    ctx.fillRect(10, 5, 10, 20);
 
-    ws.send(JSON.stringify({
-        type:"move",
-        id:PLAYER_ID,
-        x:p.x,
-        y:p.y
-    }));
-},50);
+    ctx.fillStyle = boost ? "red" : "#111";
+    ctx.fillRect(5, 5, 5, 10);
+    ctx.fillRect(20, 5, 5, 10);
+    ctx.fillRect(5, 20, 5, 10);
+    ctx.fillRect(20, 20, 5, 10);
+}
 
 // LOOP
 function loop(){
 
+    // direção
     if(k["arrowleft"]||k["a"]) p.angle -= 0.05;
     if(k["arrowright"]||k["d"]) p.angle += 0.05;
 
+    // aceleração
     if(accelerating){
         p.speed += 0.3;
-        if(p.speed > 6) p.speed = 6;
+        if(p.speed > 8) p.speed = 8;
+
+        p.boost = Math.min(100, p.boost + 0.1);
+        p.tyre = Math.max(0, p.tyre - 0.05);
     }
 
+    // boost
+    if(p.isBoosting && p.boost > 0){
+        p.speed += 0.5;
+        p.boost -= 0.5;
+    }
+
+    // freio
     if(braking){
         p.speed *= 0.8;
-        if(p.speed < 0.05) p.speed = 0;
     }
 
-    p.speed *= 0.98;
-
+    // movimento
     p.x += Math.cos(p.angle) * p.speed;
     p.y += Math.sin(p.angle) * p.speed;
 
-    // DRAW
-    x.fillStyle = "#ddd";
+    // UI
+    boostBar.style.width = p.boost + "%";
+    tyreBar.style.width = p.tyre + "%";
+
+    // FUNDO
+    x.fillStyle = "#808080";
     x.fillRect(0,0,c.width,c.height);
 
-    // OUTROS
+    // OUTROS JOGADORES
     for(let id in others){
         if(id === PLAYER_ID) continue;
+
         let o = others[id];
 
         x.save();
         x.translate(o.x, o.y);
-        x.fillStyle = o.color || "#888";
-        x.fillRect(-15,-15,30,30);
+        x.rotate(o.angle + Math.PI/2);
+        x.translate(-15,-15);
+        drawCar(x, o.color, o.isBoosting);
         x.restore();
     }
 
     // VOCÊ
     x.save();
     x.translate(p.x, p.y);
-    x.rotate(p.angle);
-    x.fillStyle = p.color;
-    x.fillRect(-15,-15,30,30);
+    x.rotate(p.angle + Math.PI/2);
+    x.translate(-15,-15);
+    drawCar(x, p.color, p.isBoosting);
     x.restore();
+
+    // ENVIO
+    if(ws && ws.readyState===1){
+        ws.send(JSON.stringify({
+            type:"update",
+            id:PLAYER_ID,
+            player:p
+        }));
+    }
 
     requestAnimationFrame(loop);
 }
 
-onresize = ()=>{ c.width=innerWidth; c.height=innerHeight; };
+onresize = ()=>{
+    c.width = innerWidth;
+    c.height = innerHeight;
+};
 onresize();
 
 loop();
