@@ -17,26 +17,54 @@ let stateBuffer = [];
 const RENDER_DELAY = 50;
 
 let worldTime = 0;
+let mouse = { x: 0, y: 0 };
 
 // resize
-window.onresize = () => {
+onresize = () => {
     c.width = innerWidth;
     c.height = innerHeight;
 };
-window.onresize();
+onresize();
 
-// input
+// input teclado
 onkeydown = e => k[e.key] = 1;
 onkeyup = e => k[e.key] = 0;
+
+// mouse
+onmousemove = e => {
+    mouse.x = e.clientX;
+    mouse.y = e.clientY;
+};
+
+// tiro
+onclick = () => {
+    if (ws.readyState !== 1) return;
+
+    const cx = p.x + 15;
+    const cy = p.y + 15;
+
+    const dx = mouse.x - cx;
+    const dy = mouse.y - cy;
+    const len = Math.hypot(dx, dy);
+
+    const dirX = dx / len;
+    const dirY = dy / len;
+
+    ws.send(JSON.stringify({
+        type: "shoot",
+        id: PLAYER_ID,
+        x: cx,
+        y: cy,
+        dx: dirX,
+        dy: dirY
+    }));
+};
 
 // websocket
 const ws = new WebSocket(WS_URL);
 
 ws.onopen = () => {
-    ws.send(JSON.stringify({
-        type: "join",
-        id: PLAYER_ID
-    }));
+    ws.send(JSON.stringify({ type: "join", id: PLAYER_ID }));
 };
 
 ws.onmessage = (event) => {
@@ -44,22 +72,19 @@ ws.onmessage = (event) => {
 
     if (data.type === "state") {
 
-        if (data.world) {
-            worldTime = data.world.time;
-        }
+        if (data.world) worldTime = data.world.time;
 
         stateBuffer.push({
             time: Date.now(),
-            players: data.players
+            players: data.players,
+            bullets: data.bullets || []
         });
 
-        if (stateBuffer.length > 20) {
-            stateBuffer.shift();
-        }
+        if (stateBuffer.length > 20) stateBuffer.shift();
     }
 };
 
-// envio de posição
+// envio posição
 setInterval(() => {
     if (ws.readyState !== 1) return;
 
@@ -71,7 +96,7 @@ setInterval(() => {
     }));
 }, 50);
 
-// loop principal
+// loop
 function loop() {
 
     if (k.ArrowUp || k.w) p.y -= p.s;
@@ -85,85 +110,29 @@ function loop() {
     x.fillStyle = "#fff";
     x.fillRect(0, 0, c.width, c.height);
 
-    const renderTime = Date.now() - RENDER_DELAY;
-
-    let older, newer;
-
-    for (let i = 0; i < stateBuffer.length - 1; i++) {
-        if (
-            stateBuffer[i].time <= renderTime &&
-            stateBuffer[i + 1].time >= renderTime
-        ) {
-            older = stateBuffer[i];
-            newer = stateBuffer[i + 1];
-            break;
-        }
-    }
-
-    if (older && newer) {
-
-        const t = (renderTime - older.time) / (newer.time - older.time);
-
-        for (let id in newer.players) {
-
-            if (id === PLAYER_ID) continue;
-
-            const p1 = older.players[id];
-            const p2 = newer.players[id];
-
-            if (!p1 || !p2) continue;
-
-            const ix = p1.x + (p2.x - p1.x) * t;
-            const iy = p1.y + (p2.y - p1.y) * t;
-
-            x.fillStyle = "#" + p2.color;
-            x.fillRect(ix, iy, 30, 30);
-        }
-    }
-
-    else if (stateBuffer.length > 0) {
+    if (stateBuffer.length > 0) {
 
         const latest = stateBuffer[stateBuffer.length - 1];
 
+        // players
         for (let id in latest.players) {
-            if (id === PLAYER_ID) continue;
-
             const pl = latest.players[id];
 
             x.fillStyle = "#" + pl.color;
             x.fillRect(pl.x, pl.y, 30, 30);
         }
-    }
 
-    // você (usa a própria cor vinda do servidor, se já recebida)
-    if (stateBuffer.length > 0) {
-        const latest = stateBuffer[stateBuffer.length - 1];
-        const me = latest.players[PLAYER_ID];
-
-        if (me) {
-            x.fillStyle = "#" + me.color;
-        } else {
-            x.fillStyle = "#000";
-        }
-    } else {
+        // bullets
         x.fillStyle = "#000";
+        latest.bullets.forEach(b => {
+            x.fillRect(b.x, b.y, 5, 5);
+        });
     }
-
-    x.fillRect(p.x, p.y, 30, 30);
-
-    // timer
-    const timeLeft = Math.max(0, 60 - Math.floor(worldTime / 1000));
-
-    x.fillStyle = "#000";
-    x.font = "20px Arial";
-    x.textAlign = "center";
-    x.fillText("Tempo: " + timeLeft + "s", c.width / 2, 30);
 
     requestAnimationFrame(loop);
 }
 
 loop();
 </script>
-
 </body>
 </html>
