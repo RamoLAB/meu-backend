@@ -7,7 +7,7 @@
 const c = g;
 const x = c.getContext("2d");
 
-let p = { x: 50, y: 50, s: 5 };
+let p = { x: 50, y: 50 };
 let k = {};
 
 const PLAYER_ID = Math.random().toString(36).substring(2, 10);
@@ -16,8 +16,8 @@ const WS_URL = "wss://meu-backend-0rzt.onrender.com";
 let stateBuffer = [];
 const RENDER_DELAY = 50;
 
-let worldTime = 0;
-let mouse = { x: 0, y: 0 };
+let world = {};
+let lastDash = 0;
 
 // resize
 onresize = () => {
@@ -26,36 +26,20 @@ onresize = () => {
 };
 onresize();
 
-// teclado
-onkeydown = e => k[e.key] = 1;
+// input
+onkeydown = e => {
+    k[e.key] = 1;
+
+    if (e.key === " ") {
+        const now = Date.now();
+        if (now - lastDash > 1500) {
+            ws.send(JSON.stringify({ type: "dash", id: PLAYER_ID }));
+            lastDash = now;
+        }
+    }
+};
+
 onkeyup = e => k[e.key] = 0;
-
-// mouse
-onmousemove = e => {
-    mouse.x = e.clientX;
-    mouse.y = e.clientY;
-};
-
-// tiro
-onclick = () => {
-    if (ws.readyState !== 1) return;
-
-    const cx = p.x + 15;
-    const cy = p.y + 15;
-
-    const dx = mouse.x - cx;
-    const dy = mouse.y - cy;
-    const len = Math.hypot(dx, dy) || 1;
-
-    ws.send(JSON.stringify({
-        type: "shoot",
-        id: PLAYER_ID,
-        x: cx,
-        y: cy,
-        dx: dx / len,
-        dy: dy / len
-    }));
-};
 
 // websocket
 const ws = new WebSocket(WS_URL);
@@ -69,40 +53,34 @@ ws.onmessage = (event) => {
 
     if (data.type === "state") {
 
-        if (data.world) worldTime = data.world.time;
+        world = data.world;
 
         stateBuffer.push({
             time: Date.now(),
             players: data.players,
-            bullets: data.bullets || []
+            events: data.events
         });
 
         if (stateBuffer.length > 20) stateBuffer.shift();
     }
 };
 
-// envio posição
+// envia intenção de movimento (não posição)
 setInterval(() => {
     if (ws.readyState !== 1) return;
 
     ws.send(JSON.stringify({
-        type: "move",
+        type: "input",
         id: PLAYER_ID,
-        x: p.x,
-        y: p.y
+        up: k.w || k.ArrowUp,
+        down: k.s || k.ArrowDown,
+        left: k.a || k.ArrowLeft,
+        right: k.d || k.ArrowRight
     }));
 }, 50);
 
 // loop
 function loop() {
-
-    if (k.ArrowUp || k.w) p.y -= p.s;
-    if (k.ArrowDown || k.s) p.y += p.s;
-    if (k.ArrowLeft || k.a) p.x -= p.s;
-    if (k.ArrowRight || k.d) p.x += p.s;
-
-    p.x = Math.max(0, Math.min(c.width - 30, p.x));
-    p.y = Math.max(0, Math.min(c.height - 30, p.y));
 
     x.fillStyle = "#fff";
     x.fillRect(0, 0, c.width, c.height);
@@ -122,72 +100,66 @@ function loop() {
         }
     }
 
-    // players interpolados
+    let currentPlayers = {};
+
     if (older && newer) {
 
         const t = (renderTime - older.time) / (newer.time - older.time);
 
         for (let id in newer.players) {
 
-            if (id === PLAYER_ID) continue;
-
             const p1 = older.players[id];
             const p2 = newer.players[id];
-
             if (!p1 || !p2) continue;
 
-            const ix = p1.x + (p2.x - p1.x) * t;
-            const iy = p1.y + (p2.y - p1.y) * t;
-
-            x.fillStyle = "#" + p2.color;
-            x.fillRect(ix, iy, 30, 30);
+            currentPlayers[id] = {
+                x: p1.x + (p2.x - p1.x) * t,
+                y: p1.y + (p2.y - p1.y) * t,
+                ...p2
+            };
         }
+    } else if (stateBuffer.length > 0) {
+        currentPlayers = stateBuffer[stateBuffer.length - 1].players;
     }
 
-    else if (stateBuffer.length > 0) {
+    // arena
+    const size = world.arena || 800;
+    const mx = (c.width - size) / 2;
+    const my = (c.height - size) / 2;
 
-        const latest = stateBuffer[stateBuffer.length - 1];
+    x.strokeStyle = "#000";
+    x.strokeRect(mx, my, size, size);
 
-        for (let id in latest.players) {
-            if (id === PLAYER_ID) continue;
+    let aliveCount = 0;
 
-            const pl = latest.players[id];
+    for (let id in currentPlayers) {
 
-            x.fillStyle = "#" + pl.color;
-            x.fillRect(pl.x, pl.y, 30, 30);
-        }
-    }
+        const pl = currentPlayers[id];
+        if (!pl.alive) continue;
 
-    // você
-    if (stateBuffer.length > 0) {
-        const latest = stateBuffer[stateBuffer.length - 1];
-        const me = latest.players[PLAYER_ID];
+        aliveCount++;
 
-        x.fillStyle = me ? "#" + me.color : "#000";
-    } else {
+        x.fillStyle = "#" + pl.color;
+        x.fillRect(pl.x, pl.y, pl.size, pl.size);
+
+        // hp bar
         x.fillStyle = "#000";
+        x.fillRect(pl.x, pl.y - 6, pl.size * (pl.hp / 100), 3);
     }
 
-    x.fillRect(p.x, p.y, 30, 30);
-
-    // tiros (sem interpolação)
-    if (stateBuffer.length > 0) {
-        const latest = stateBuffer[stateBuffer.length - 1];
-
-        x.fillStyle = "#000";
-
-        latest.bullets.forEach(b => {
-            x.fillRect(b.x, b.y, 5, 5);
-        });
-    }
-
-    // timer
-    const timeLeft = Math.max(0, 60 - Math.floor(worldTime / 1000));
-
+    // UI
     x.fillStyle = "#000";
     x.font = "20px Arial";
     x.textAlign = "center";
-    x.fillText("Tempo: " + timeLeft + "s", c.width / 2, 30);
+
+    const timeLeft = Math.max(0, 60 - Math.floor(world.time / 1000));
+    x.fillText("Tempo: " + timeLeft, c.width / 2, 30);
+
+    x.fillText("Vivos: " + aliveCount, c.width / 2, 60);
+
+    if (world.winner) {
+        x.fillText("Vencedor: " + world.winner, c.width / 2, 100);
+    }
 
     requestAnimationFrame(loop);
 }
