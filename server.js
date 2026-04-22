@@ -14,11 +14,21 @@ let players = {};
 
 const WORLD = {
     startTime: Date.now(),
-    duration: 60000,       // 60s
+    duration: 60000,
     arenaStart: 1000,
     shrinkStep: 100,
     shrinkInterval: 10000
 };
+
+// =====================
+// UTILS
+// =====================
+
+function randomColor() {
+    return Math.floor(Math.random() * 16777215)
+        .toString(16)
+        .padStart(6, "0");
+}
 
 // =====================
 // HTTP
@@ -44,7 +54,8 @@ wss.on("connection", (ws) => {
 
             players[playerId] = {
                 x: 50,
-                y: 50
+                y: 50,
+                color: randomColor()
             };
         }
 
@@ -72,7 +83,6 @@ setInterval(() => {
     const now = Date.now();
     let elapsed = now - WORLD.startTime;
 
-    // reinicia o ciclo de 60s
     if (elapsed >= WORLD.duration) {
         WORLD.startTime = now;
         elapsed = 0;
@@ -113,4 +123,3 @@ const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
     console.log("Servidor rodando na porta", PORT);
 });
-
