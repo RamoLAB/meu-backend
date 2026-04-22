@@ -6,23 +6,8 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// =====================
-// ESTADO GLOBAL
-// =====================
-
 let players = {};
-
-const WORLD = {
-    startTime: Date.now(),
-    duration: 60000,
-    arenaStart: 1000,
-    shrinkStep: 100,
-    shrinkInterval: 10000
-};
-
-// =====================
-// UTILS
-// =====================
+let bullets = [];
 
 function randomColor() {
     return Math.floor(Math.random() * 16777215)
@@ -30,17 +15,9 @@ function randomColor() {
         .padStart(6, "0");
 }
 
-// =====================
-// HTTP
-// =====================
-
 app.get("/", (req, res) => {
     res.send("Servidor rodando");
 });
-
-// =====================
-// WEBSOCKET
-// =====================
 
 wss.on("connection", (ws) => {
 
@@ -65,6 +42,17 @@ wss.on("connection", (ws) => {
                 players[data.id].y = data.y;
             }
         }
+
+        if (data.type === "shoot") {
+            bullets.push({
+                x: data.x,
+                y: data.y,
+                dx: data.dx,
+                dy: data.dy,
+                speed: 10,
+                life: 1000 // ms
+            });
+        }
     });
 
     ws.on("close", () => {
@@ -74,36 +62,22 @@ wss.on("connection", (ws) => {
     });
 });
 
-// =====================
-// LOOP GLOBAL
-// =====================
-
+// loop
 setInterval(() => {
 
-    const now = Date.now();
-    let elapsed = now - WORLD.startTime;
+    // atualizar tiros
+    bullets.forEach(b => {
+        b.x += b.dx * b.speed;
+        b.y += b.dy * b.speed;
+        b.life -= 50;
+    });
 
-    if (elapsed >= WORLD.duration) {
-        WORLD.startTime = now;
-        elapsed = 0;
-    }
-
-    const shrinkSteps = Math.floor(elapsed / WORLD.shrinkInterval);
-
-    const arenaSize = Math.max(
-        200,
-        WORLD.arenaStart - shrinkSteps * WORLD.shrinkStep
-    );
-
-    const worldState = {
-        time: elapsed,
-        arena: arenaSize
-    };
+    bullets = bullets.filter(b => b.life > 0);
 
     const payload = JSON.stringify({
         type: "state",
         players: players,
-        world: worldState
+        bullets: bullets
     });
 
     wss.clients.forEach(client => {
@@ -114,12 +88,8 @@ setInterval(() => {
 
 }, 50);
 
-// =====================
-// START
-// =====================
-
 const PORT = process.env.PORT || 10000;
 
 server.listen(PORT, () => {
-    console.log("Servidor rodando na porta", PORT);
+    console.log("Servidor rodando", PORT);
 });
