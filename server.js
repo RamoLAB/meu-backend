@@ -9,6 +9,11 @@ const wss = new WebSocket.Server({ server });
 let players = {};
 let bullets = [];
 
+const WORLD = {
+    startTime: Date.now(),
+    duration: 60000
+};
+
 function randomColor() {
     return Math.floor(Math.random() * 16777215)
         .toString(16)
@@ -49,8 +54,8 @@ wss.on("connection", (ws) => {
                 y: data.y,
                 dx: data.dx,
                 dy: data.dy,
-                speed: 10,
-                life: 1000 // ms
+                speed: 12,
+                life: 3000
             });
         }
     });
@@ -62,22 +67,41 @@ wss.on("connection", (ws) => {
     });
 });
 
-// loop
+// loop global
 setInterval(() => {
 
+    const now = Date.now();
+    let elapsed = now - WORLD.startTime;
+
+    if (elapsed >= WORLD.duration) {
+        WORLD.startTime = now;
+        elapsed = 0;
+    }
+
     // atualizar tiros
-    bullets.forEach(b => {
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+
         b.x += b.dx * b.speed;
         b.y += b.dy * b.speed;
         b.life -= 50;
-    });
 
-    bullets = bullets.filter(b => b.life > 0);
+        if (
+            b.life <= 0 ||
+            b.x < -50 || b.x > 5000 ||
+            b.y < -50 || b.y > 5000
+        ) {
+            bullets.splice(i, 1);
+        }
+    }
 
     const payload = JSON.stringify({
         type: "state",
         players: players,
-        bullets: bullets
+        bullets: bullets,
+        world: {
+            time: elapsed
+        }
     });
 
     wss.clients.forEach(client => {
@@ -91,5 +115,5 @@ setInterval(() => {
 const PORT = process.env.PORT || 10000;
 
 server.listen(PORT, () => {
-    console.log("Servidor rodando", PORT);
+    console.log("Servidor rodando na porta", PORT);
 });
