@@ -44,7 +44,6 @@ ws.onmessage = (event) => {
 
     if (data.type === "state") {
 
-        // 👇 NOVO: tempo global
         if (data.world) {
             worldTime = data.world.time;
         }
@@ -117,7 +116,7 @@ function loop() {
             const ix = p1.x + (p2.x - p1.x) * t;
             const iy = p1.y + (p2.y - p1.y) * t;
 
-            x.fillStyle = "#" + intToColor(id);
+            x.fillStyle = "#" + p2.color;
             x.fillRect(ix, iy, 30, 30);
         }
     }
@@ -131,19 +130,28 @@ function loop() {
 
             const pl = latest.players[id];
 
-            x.fillStyle = "#" + intToColor(id);
+            x.fillStyle = "#" + pl.color;
             x.fillRect(pl.x, pl.y, 30, 30);
         }
     }
 
-    // você
-    x.fillStyle = "#000";
+    // você (usa a própria cor vinda do servidor, se já recebida)
+    if (stateBuffer.length > 0) {
+        const latest = stateBuffer[stateBuffer.length - 1];
+        const me = latest.players[PLAYER_ID];
+
+        if (me) {
+            x.fillStyle = "#" + me.color;
+        } else {
+            x.fillStyle = "#000";
+        }
+    } else {
+        x.fillStyle = "#000";
+    }
+
     x.fillRect(p.x, p.y, 30, 30);
 
-    // =====================
-    // TIMER GLOBAL (NOVO)
-    // =====================
-
+    // timer
     const timeLeft = Math.max(0, 60 - Math.floor(worldTime / 1000));
 
     x.fillStyle = "#000";
@@ -155,18 +163,7 @@ function loop() {
 }
 
 loop();
-
-// cor por id
-function intToColor(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-        hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    let color = (hash & 0x00FFFFFF).toString(16).toUpperCase();
-    return "000000".substring(0, 6 - color.length) + color;
-}
 </script>
 
 </body>
 </html>
-
