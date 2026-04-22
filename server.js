@@ -7,11 +7,15 @@ const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 let players = {};
-let bullets = [];
+let inputs = {};
 
 const WORLD = {
     startTime: Date.now(),
-    duration: 60000
+    duration: 60000,
+    arenaStart: 1000,
+    shrinkStep: 100,
+    shrinkInterval: 10000,
+    winner: null
 };
 
 function randomColor() {
@@ -20,54 +24,59 @@ function randomColor() {
         .padStart(6, "0");
 }
 
-app.get("/", (req, res) => {
-    res.send("Servidor rodando");
-});
-
 wss.on("connection", (ws) => {
 
-    let playerId = null;
+    let id = null;
 
-    ws.on("message", (msg) => {
+    ws.on("message", msg => {
         const data = JSON.parse(msg);
 
         if (data.type === "join") {
-            playerId = data.id;
+            id = data.id;
 
-            players[playerId] = {
+            players[id] = {
                 x: 50,
                 y: 50,
-                color: randomColor()
+                vx: 0,
+                vy: 0,
+                color: randomColor(),
+                hp: 100,
+                alive: true,
+                size: 30,
+                shield: false
             };
         }
 
-        if (data.type === "move") {
-            if (players[data.id]) {
-                players[data.id].x = data.x;
-                players[data.id].y = data.y;
-            }
+        if (data.type === "input") {
+            inputs[data.id] = data;
         }
 
-        if (data.type === "shoot") {
-            bullets.push({
-                x: data.x,
-                y: data.y,
-                dx: data.dx,
-                dy: data.dy,
-                speed: 12,
-                life: 3000
-            });
+        if (data.type === "dash") {
+            const p = players[data.id];
+            if (!p) return;
+
+            p.x += p.vx * 100;
+            p.y += p.vy * 100;
         }
     });
 
     ws.on("close", () => {
-        if (playerId && players[playerId]) {
-            delete players[playerId];
-        }
+        delete players[id];
+        delete inputs[id];
     });
 });
 
-// loop global
+// colisão
+function collide(a, b) {
+    return (
+        a.x < b.x + b.size &&
+        a.x + a.size > b.x &&
+        a.y < b.y + b.size &&
+        a.y + a.size > b.y
+    );
+}
+
+// loop
 setInterval(() => {
 
     const now = Date.now();
@@ -75,45 +84,100 @@ setInterval(() => {
 
     if (elapsed >= WORLD.duration) {
         WORLD.startTime = now;
-        elapsed = 0;
+        WORLD.winner = null;
+        players = {};
+        inputs = {};
+        return;
     }
 
-    // atualizar tiros
-    for (let i = bullets.length - 1; i >= 0; i--) {
-        const b = bullets[i];
+    const shrinkSteps = Math.floor(elapsed / WORLD.shrinkInterval);
 
-        b.x += b.dx * b.speed;
-        b.y += b.dy * b.speed;
-        b.life -= 50;
+    const arena = Math.max(
+        200,
+        WORLD.arenaStart - shrinkSteps * WORLD.shrinkStep
+    );
 
+    const mx = 500 - arena / 2;
+    const my = 500 - arena / 2;
+
+    // movimento
+    for (let id in players) {
+
+        const p = players[id];
+        if (!p.alive) continue;
+
+        const inp = inputs[id] || {};
+
+        const speed = 4;
+
+        p.vx = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+        p.vy = (inp.down ? 1 : 0) - (inp.up ? 1 : 0);
+
+        p.x += p.vx * speed;
+        p.y += p.vy * speed;
+
+        // zona de dano
         if (
-            b.life <= 0 ||
-            b.x < -50 || b.x > 5000 ||
-            b.y < -50 || b.y > 5000
+            p.x < mx || p.x > mx + arena ||
+            p.y < my || p.y > my + arena
         ) {
-            bullets.splice(i, 1);
+            p.hp -= 2;
+            if (p.hp <= 0) p.alive = false;
         }
+    }
+
+    // colisão + knockback
+    const ids = Object.keys(players);
+
+    for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+
+            const a = players[ids[i]];
+            const b = players[ids[j]];
+
+            if (!a.alive || !b.alive) continue;
+
+            if (collide(a, b)) {
+
+                const dx = a.x - b.x;
+                const dy = a.y - b.y;
+                const len = Math.hypot(dx, dy) || 1;
+
+                const kx = dx / len * 20;
+                const ky = dy / len * 20;
+
+                a.x += kx;
+                a.y += ky;
+
+                b.x -= kx;
+                b.y -= ky;
+            }
+        }
+    }
+
+    // vitória
+    const alive = Object.entries(players).filter(([_, p]) => p.alive);
+
+    if (alive.length === 1) {
+        WORLD.winner = alive[0][0];
     }
 
     const payload = JSON.stringify({
         type: "state",
-        players: players,
-        bullets: bullets,
+        players,
         world: {
-            time: elapsed
+            time: elapsed,
+            arena,
+            winner: WORLD.winner
         }
     });
 
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(payload);
+    wss.clients.forEach(c => {
+        if (c.readyState === WebSocket.OPEN) {
+            c.send(payload);
         }
     });
 
 }, 50);
 
-const PORT = process.env.PORT || 10000;
-
-server.listen(PORT, () => {
-    console.log("Servidor rodando na porta", PORT);
-});
+server.listen(process.env.PORT || 10000);
